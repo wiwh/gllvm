@@ -1,0 +1,19 @@
+[tool]
+name = "gllvm"
+version = "0.1.0"
+description = "A brief description of the gllvm package."
+authors = ["Your Name <youremail@example.com>"]
+license = "MIT"
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+dependencies = [
+    # List your package dependencies here
+]
+
+[tool.twine]
+username = "your_username"
+password = "your_password"
