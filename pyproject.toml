@@ -11,3 +11,7 @@ dependencies = ["torch >= 1.8.0"]
 Homepage = "https://github.com/wiwh/gllvm"
 Repository = "https://github.com/wiwh/gllvm"
 Issues = "https://github.com/wiwh/gllvm/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
