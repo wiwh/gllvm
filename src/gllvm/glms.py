@@ -1,10 +1,9 @@
+from abc import ABC, abstractmethod
 import torch
 import torch.distributions as D
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
+from typing import Any
 
 __all__ = [
-    "BaseGLM",
     "GaussianGLM",
     "PoissonGLM",
     "GammaGLM",
@@ -13,280 +12,238 @@ __all__ = [
 ]
 
 
-@dataclass
-class BaseGLM(ABC):
-    """
-    Abstract base class for canonical GLMs. Non-canonical GLMs (with non-canonical link functions) can be
-    implemented by the user.
+# ============================================================
+# Abstract Mixin
+# ============================================================
 
-    Each derived GLM must define:
-        - T(y):       sufficent statistic
-        - mean(linpar):  mean parameter μ = g^{-1}(η)
-        - make_dist(mean): a torch.distributions.* object
+
+class GLMMixin(ABC):
+    """Abstract mixin for Generalized Linear Models.
+
+    Each GLM defines:
+      - linpar (eta): linear predictor
+      - scale (phi): dispersion or scale parameter, always present internally
     """
 
-    # Placeholder for future non-canonical link functions implementation.
     @abstractmethod
-    def eta(self, linpar: torch.Tensor) -> torch.Tensor:
-        # For canonical link functions, this is the identity function.
+    def eta(self) -> torch.Tensor:
+        """Canonical parameter eta."""
         pass
-
-    # ----- Abstract Methods -----
 
     @abstractmethod
     def T(self, y: torch.Tensor) -> torch.Tensor:
-        """The complete-data sufficient statistic. Can be a vector, depending on the model.
-        It may differ than the sufficient statistic from the log-likelihood, with potential efficiency and computational implications.
-        """
+        """Sufficient statistic T(y)."""
         pass
 
-    @abstractmethod
-    def mean(self, linpar: torch.Tensor) -> torch.Tensor:
-        """
-        Mean μ = g^{-1}(linpar).
-        In canonical form, this is the inverse canonical link.
-        """
-        pass
+    def zq_log(self, y: torch.Tensor) -> torch.Tensor:
+        # TODO: check size of T(Y) first --- before taking sum(-1).
 
-    @abstractmethod
-    def make_dist(self, linpar: torch.Tensor) -> D.Distribution:
-        """
-        Return a torch.distributions object parameterized in mean space.
-        The exact way to do it often depends on the specific GLM being implemented and the pytorch implementation itself.
-        It may or may not use a specific link function.
-        """
-        pass
-
-    @abstractmethod
-    def sample(self, linpar: torch.Tensor) -> torch.Tensor:
-        """
-        Sample from the distribution given the linear predictor.
-        """
-        pass
-
-    # Get the log_prob from torch.distributions API
-    def log_prob(self, y: torch.Tensor, linpar: torch.Tensor) -> torch.Tensor:
-        """
-        Standard complete-data log-likelihood (for reference).
-        """
-        mean = self.mean(linpar)
-        return self.make_dist(mean).log_prob(y)
-
-    # Get the data-part of the log_prob for the Zq estimator
-    def zq_log(self, y: torch.Tensor, linpar: torch.Tensor) -> torch.Tensor:
-        """
-        The *informative* part of the complete-data log-likelihood,
-        i.e. T(y)^T * eta(linpar).
-        This is equal to self.log_prob - A(eta) - B(y) where:
-            * A(eta) is the log-partition function, and
-            * B(y) is the base measure.
-        """
-        eta = self.eta(linpar)
-        T_y = self.T(y)
-        return (T_y * eta).sum(-1)  # sum over features
+        """Informative part of the complete-data log-likelihood."""
+        return (self.T(y) * self.eta() / self.scale).sum(-1)
 
 
-# ==============================
-# Canonical GLMs
-# ==============================
-#
-# Canonical GLMs are special cases where
-# eta(linpar) = linpar
-#
-# Users can extend the BaseGLM class and can easily implement their own non-canonical
-# version, or other GLMs.
+# ============================================================
+# Gaussian GLM
+# ============================================================
 
 
-@dataclass
-class GaussianGLM(BaseGLM):
+class GaussianGLM(D.Normal, GLMMixin):
     """Gaussian GLM (identity link).
 
-    Args:
-        std: Standard deviation (scalar or tensor, broadcastable to mean).
-             Allows per-element noise scales.
+    Var[Y] = phi = scale
     """
 
-    std: float | torch.Tensor = 1.0  # scalar or tensor
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+        self.linpar = linpar
+        self.scale = torch.as_tensor(scale, device=linpar.device)
+        std = torch.sqrt(self.scale)
+        super().__init__(loc=linpar, scale=std)
 
-    def eta(self, linpar: torch.Tensor) -> torch.Tensor:
-        """Identity link: eta = linpar."""
-        return linpar
-
-    def T(self, y: torch.Tensor) -> torch.Tensor:
-        """Sufficient statistic."""
-        return y
-
-    def mean(self, linpar: torch.Tensor) -> torch.Tensor:
-        """Inverse link: identity."""
-        return linpar
-
-    def make_dist(self, linpar: torch.Tensor) -> D.Distribution:
-        mu = self.mean(linpar)
-        return D.Normal(mu, self.std)
-
-    def sample(self, linpar: torch.Tensor) -> torch.Tensor:
-        """Draw samples."""
-        return self.make_dist(linpar).sample()
-
-
-@dataclass
-class PoissonGLM(BaseGLM):
-    """Canonical Poisson GLM (log link)."""
-
-    def eta(self, linpar: torch.Tensor) -> torch.Tensor:
-        return linpar
+    def eta(self) -> torch.Tensor:
+        return self.linpar
 
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return y
 
-    def mean(self, linpar: torch.Tensor) -> torch.Tensor:
-        return torch.exp(linpar)
+    @property
+    def std(self) -> torch.Tensor:
+        return torch.sqrt(self.scale)
 
-    def make_dist(self, linpar: torch.Tensor) -> D.Distribution:
-        rate = self.mean(linpar)
-        return D.Poisson(rate)
-
-    def sample(self, linpar: torch.Tensor) -> torch.Tensor:
-        return self.make_dist(linpar).sample()
+    @property
+    def variance(self) -> torch.Tensor:
+        return self.scale
 
 
-@dataclass
-class GammaGLM(BaseGLM):
-    """Gamma GLM with log link (non-canonical).
+# ============================================================
+# Poisson GLM
+# ============================================================
 
-    Link: η = log(μ)
-    Mean: μ = exp(η)
-    Canonical parameter: θ = -1 / μ  (not used here)
 
-    Args:
-        a: Shape parameter (often noted alpha).
-    Remarks:
-        The rate parameter b (beta) is set to beta = alpha / mu, ensuring E[Y] = μ > 0.
+class PoissonGLM(D.Poisson, GLMMixin):
+    """Canonical Poisson GLM (log link).
+
+    Var[Y] = mu, fixed scale = 1 (internally)
     """
 
-    a: float = 1.0  # shape parameter
+    def __init__(self, linpar: torch.Tensor):
+        self.linpar = linpar
+        self.scale = torch.tensor(1.0, device=linpar.device)  # fixed, internal only
+        rate = torch.exp(linpar)
+        super().__init__(rate=rate)
 
-    def eta(self, linpar: torch.Tensor) -> torch.Tensor:
-        """Linear predictor (η = Xβ). For log link, η = log(μ)."""
-        return linpar
+    def eta(self) -> torch.Tensor:
+        return self.linpar
 
     def T(self, y: torch.Tensor) -> torch.Tensor:
-        """Sufficient statistic under log-link parameterization."""
+        return y
+
+
+# ============================================================
+# Gamma GLM
+# ============================================================
+
+
+class GammaGLM(D.Gamma, GLMMixin):
+    """Gamma GLM with log link.
+
+    Var[Y] = scale * mu^2, shape = 1 / scale
+    """
+
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+        self.linpar = linpar
+        self.scale = torch.as_tensor(scale, device=linpar.device)
+        mu = torch.exp(linpar)
+        shape = 1.0 / self.scale
+        rate = shape / mu
+        super().__init__(concentration=shape, rate=rate)
+
+    def eta(self) -> torch.Tensor:
+        return self.linpar
+
+    def T(self, y: torch.Tensor) -> torch.Tensor:
         return torch.log(y)
 
-    def mean(self, linpar: torch.Tensor) -> torch.Tensor:
-        """Inverse link: μ = exp(η)."""
-        return torch.exp(linpar)
+    @property
+    def shape(self) -> torch.Tensor:
+        """Shape (alpha) = 1 / scale."""
+        return 1.0 / self.scale
 
-    def make_dist(self, linpar: torch.Tensor) -> D.Distribution:
-        """Return Gamma(a, b) with b = a / μ so that E[Y] = μ."""
-        mu = self.mean(linpar)
-        b = self.a / mu  # rate = a / μ
-        return D.Gamma(concentration=self.a, rate=b)
-
-    def sample(self, linpar: torch.Tensor) -> torch.Tensor:
-        return self.make_dist(linpar).sample()
+    @property
+    def rate_param(self) -> torch.Tensor:
+        """Rate (beta) = alpha / mu."""
+        mu = torch.exp(self.linpar)
+        return self.shape / mu
 
 
-@dataclass
-class NegativeBinomialGLM(BaseGLM):
-    """Canonical Negative Binomial GLM (log link)."""
-
-    def eta(self, linpar: torch.Tensor) -> torch.Tensor:
-        return linpar
-
-    def T(self, y: torch.Tensor) -> torch.Tensor:
-        return y
-
-    def mean(self, linpar: torch.Tensor) -> torch.Tensor:
-        return torch.exp(linpar)
-
-    def make_dist(self, linpar: torch.Tensor) -> D.Distribution:
-        mean = self.mean(linpar)
-        # fixed dispersion r = 1
-        r = 1.0
-        p = r / (r + mean)
-        return D.NegativeBinomial(total_count=r, probs=p)
-
-    def sample(self, linpar: torch.Tensor) -> torch.Tensor:
-        return self.make_dist(linpar).sample()
+# ============================================================
+# Negative Binomial GLM
+# ============================================================
 
 
-@dataclass
-class BinomialGLM(BaseGLM):
-    """Canonical Binomial GLM (logit link).
+class NegativeBinomialGLM(D.NegativeBinomial, GLMMixin):
+    """Negative Binomial GLM (log link).
 
-    Args:
-        n_trials: Number of trials for the Binomial distribution. Defaults to 1 (=Bernoulli).
-
+    Var[Y] = mu + scale * mu^2, total_count = 1 / scale
     """
 
-    n_trials: int = 1  # Number of trials for the Binomial distribution
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+        self.linpar = linpar
+        self.scale = torch.as_tensor(scale, device=linpar.device)
+        mu = torch.exp(linpar)
+        total_count = 1.0 / self.scale
+        p = total_count / (total_count + mu)
+        super().__init__(total_count=total_count, probs=p)
 
-    def eta(self, linpar: torch.Tensor) -> torch.Tensor:
-        return linpar
+    def eta(self) -> torch.Tensor:
+        return self.linpar
 
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return y
 
-    def mean(self, linpar: torch.Tensor) -> torch.Tensor:
-        return torch.sigmoid(linpar)  # inverse logit
+    @property
+    def total_count_param(self) -> torch.Tensor:
+        return 1.0 / self.scale
 
-    def make_dist(self, linpar: torch.Tensor) -> D.Distribution:
-        probs = self.mean(linpar)
-        return D.Binomial(total_count=self.n_trials, probs=probs)
+    @property
+    def probs_param(self) -> torch.Tensor:
+        mu = torch.exp(self.linpar)
+        r = self.total_count_param
+        return r / (r + mu)
 
-    def sample(self, linpar: torch.Tensor) -> torch.Tensor:
-        return self.make_dist(linpar).sample()
 
+# ============================================================
+# Binomial GLM
+# ============================================================
+
+
+class BinomialGLM(D.Binomial, GLMMixin):
+    """Binomial GLM (logit link).
+
+    Var[Y] = n * p * (1 - p), fixed scale = 1 (internally)
+    """
+
+    def __init__(self, linpar: torch.Tensor, total_count: Any = 1):
+        self.linpar = linpar
+        self.total_count = total_count
+        self.scale = torch.tensor(1.0, device=linpar.device)  # internal only
+        super().__init__(total_count=total_count, logits=linpar)
+
+    def eta(self) -> torch.Tensor:
+        return self.linpar
+
+    def T(self, y: torch.Tensor) -> torch.Tensor:
+        return y
+
+    @property
+    def probs_param(self) -> torch.Tensor:
+        return torch.sigmoid(self.linpar)
+
+
+# ============================================================
+# Example usage
+# ============================================================
 
 if __name__ == "__main__":
-    """Example usage of canonical GLMs."""
-
     linpar = torch.tensor([0.0, 1.0, -1.0])
+    scale = torch.tensor([1, 0.5, 2])
 
-    # --- Binomial ---
-    binom = BinomialGLM(n_trials=5)
-    print("=== Binomial GLM ===")
-    print("Samples:", binom.sample(linpar))
-    print("Means:", binom.mean(linpar))
-    print()
-
-    # --- Poisson ---
-    pois = PoissonGLM()
-    print("=== Poisson GLM ===")
-    print("Samples:", pois.sample(linpar))
-    print("Means:", pois.mean(linpar))
-    print()
-
-    # --- Gaussian ---
-    gauss = GaussianGLM(std=torch.tensor([2.0]))
-    linpar_g = torch.tensor([0.0, 1.0, -0.5])
-    samples_g = gauss.sample(linpar_g)
     print("=== Gaussian GLM ===")
-    print("Samples:", samples_g)
-    print("Means:", gauss.mean(linpar_g))
-    print("log_prob:", gauss.log_prob(samples_g, linpar_g))
-    print("zq_log:", gauss.zq_log(samples_g, linpar_g))
+    g = GaussianGLM(linpar, scale=scale)
+    y = g.sample()
+    print("Samples:", y)
+    print("scale:", g.scale)
+    print("zq_log:", g.zq_log(y))
     print()
 
-    # --- Gamma ---
-    gamma = GammaGLM(a=2.0)
-    linpar_ga = torch.tensor([-1.0, -0.5, -2.0])  # ensure μ > 0
-    samples_ga = gamma.sample(linpar_ga)
+    print("=== Poisson GLM ===")
+    p = PoissonGLM(linpar)
+    y = p.sample()
+    print("Samples:", y)
+    print("zq_log:", p.zq_log(y))
+    print()
+
     print("=== Gamma GLM ===")
-    print("Samples:", samples_ga)
-    print("Means:", gamma.mean(linpar_ga))
-    print("log_prob:", gamma.log_prob(samples_ga, linpar_ga))
-    print("zq_log:", gamma.zq_log(samples_ga, linpar_ga))
+    ga = GammaGLM(linpar, scale=scale)
+    y = ga.sample()
+    print("Samples:", y)
+    print("shape:", ga.shape)
+    print("rate:", ga.rate)
+    print("zq_log:", ga.zq_log(y))
     print()
 
-    # --- Negative Binomial ---
-    nb = NegativeBinomialGLM()
-    samples_nb = nb.sample(linpar)
     print("=== Negative Binomial GLM ===")
-    print("Samples:", samples_nb)
-    print("Means:", nb.mean(linpar))
-    print("log_prob:", nb.log_prob(samples_nb, linpar))
-    print("zq_log:", nb.zq_log(samples_nb, linpar))
+    nb = NegativeBinomialGLM(linpar, scale=scale)
+    y = nb.sample()
+    print("Samples:", y)
+    print("total_count:", nb.total_count_param)
+    print("p:", nb.probs_param)
+    print("zq_log:", nb.zq_log(y))
+    print()
+
+    print("=== Binomial GLM ===")
+    b = BinomialGLM(linpar, total_count=5)
+    y = b.sample()
+    print("Samples:", y)
+    print("p:", b.probs_param)
+    print("zq_log:", b.zq_log(y))
     print()
