@@ -1,16 +1,13 @@
-[build-system]
-requires = ["setuptools>=42", "wheel"]
-build-backend = "setuptools.build_meta"
-
 [project]
 name = "gllvm"
 version = "0.1.0"
-description = "A brief description of the gllvm package."
-authors = [
-    { name = "Your Name", email = "youremail@example.com" }
-]
-license = { text = "MIT" }
-dependencies = [
-    "torch >= 1.8.0",
-]
+description = "Generalized latent variable model framework."
+readme = "README.md"
 requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = ["torch >= 1.8.0"]
+
+[project.urls]
+Homepage = "https://github.com/wiwh/gllvm"
+Repository = "https://github.com/wiwh/gllvm"
+Issues = "https://github.com/wiwh/gllvm/issues"
