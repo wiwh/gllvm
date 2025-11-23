@@ -1,9 +1,26 @@
+"""
+ZQ-GLM wrappers over PyTorch distributions.
+
+Each GLM defines:
+    - eta() : natural parameter (GLM linear predictor)
+    - T(y)  : sufficient statistic
+    - __init__: converts (linpar, scale) into the parameters required by
+                torch.distributions (Normal, Poisson, Gamma, etc.)
+
+Each GLM inherits from the corresponding torch.distributions class to expose
+standard parameterization and sampling methods.
+
+Users can easily create new GLMs (e.g. with nonstandard link functions) by subclassing
+the appropriate distribution class and implementing the required methods.
+"""
+
 from abc import ABC, abstractmethod
 import torch
 import torch.distributions as D
 from typing import Any
 
 __all__ = [
+    "GLMMixin",
     "GaussianGLM",
     "PoissonGLM",
     "GammaGLM",
@@ -18,16 +35,12 @@ __all__ = [
 
 
 class GLMMixin(ABC):
-    """Abstract mixin for Generalized Linear Models.
-
-    Each GLM defines:
-      - linpar (eta): linear predictor
-      - scale (phi): dispersion or scale parameter, always present internally
-    """
+    linpar: torch.Tensor
+    scale: float | torch.Tensor
 
     @abstractmethod
     def eta(self) -> torch.Tensor:
-        """Canonical parameter eta."""
+        """Natural parameter eta."""
         pass
 
     @abstractmethod
@@ -36,10 +49,8 @@ class GLMMixin(ABC):
         pass
 
     def zq_log(self, y: torch.Tensor) -> torch.Tensor:
-        # TODO: check size of T(Y) first --- before taking sum(-1).
-
-        """Informative part of the complete-data log-likelihood."""
-        return (self.T(y) * self.eta() / self.scale).sum(-1)
+        """Informative part of complete-data log-likelihood."""
+        return self.T(y) * self.eta() / self.scale
 
 
 # ============================================================
@@ -48,9 +59,8 @@ class GLMMixin(ABC):
 
 
 class GaussianGLM(D.Normal, GLMMixin):
-    """Gaussian GLM (identity link).
-
-    Var[Y] = phi = scale
+    """Gaussian GLM with identity link.
+    Var[Y] = scale (dispersion phi)
     """
 
     def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
@@ -65,13 +75,8 @@ class GaussianGLM(D.Normal, GLMMixin):
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return y
 
-    @property
-    def std(self) -> torch.Tensor:
-        return torch.sqrt(self.scale)
-
-    @property
-    def variance(self) -> torch.Tensor:
-        return self.scale
+    def __repr__(self):
+        return f"GaussianGLM(linpar={self.linpar}, scale={self.scale})"
 
 
 # ============================================================
@@ -80,14 +85,14 @@ class GaussianGLM(D.Normal, GLMMixin):
 
 
 class PoissonGLM(D.Poisson, GLMMixin):
-    """Canonical Poisson GLM (log link).
-
-    Var[Y] = mu, fixed scale = 1 (internally)
+    """Poisson GLM with log link.
+    Var[Y] = mu, scale fixed internally to 1.
+    Remarks: the scale argument is needed for standardization.
     """
 
-    def __init__(self, linpar: torch.Tensor):
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
         self.linpar = linpar
-        self.scale = torch.tensor(1.0, device=linpar.device)  # fixed, internal only
+        self.scale = torch.tensor(1.0, device=linpar.device)
         rate = torch.exp(linpar)
         super().__init__(rate=rate)
 
@@ -97,6 +102,9 @@ class PoissonGLM(D.Poisson, GLMMixin):
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return y
 
+    def __repr__(self):
+        return f"PoissonGLM(linpar={self.linpar})"
+
 
 # ============================================================
 # Gamma GLM
@@ -105,17 +113,18 @@ class PoissonGLM(D.Poisson, GLMMixin):
 
 class GammaGLM(D.Gamma, GLMMixin):
     """Gamma GLM with log link.
-
-    Var[Y] = scale * mu^2, shape = 1 / scale
+    Var[Y] = scale * mu^2, shape = 1/scale
     """
 
     def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
         self.linpar = linpar
         self.scale = torch.as_tensor(scale, device=linpar.device)
+
         mu = torch.exp(linpar)
-        shape = 1.0 / self.scale
-        rate = shape / mu
-        super().__init__(concentration=shape, rate=rate)
+        concentration = 1.0 / self.scale  # shape
+        rate = concentration / mu  # beta = alpha / mu
+
+        super().__init__(concentration=concentration, rate=rate)
 
     def eta(self) -> torch.Tensor:
         return self.linpar
@@ -123,16 +132,8 @@ class GammaGLM(D.Gamma, GLMMixin):
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return torch.log(y)
 
-    @property
-    def shape(self) -> torch.Tensor:
-        """Shape (alpha) = 1 / scale."""
-        return 1.0 / self.scale
-
-    @property
-    def rate_param(self) -> torch.Tensor:
-        """Rate (beta) = alpha / mu."""
-        mu = torch.exp(self.linpar)
-        return self.shape / mu
+    def __repr__(self):
+        return f"GammaGLM(linpar={self.linpar}, scale={self.scale})"
 
 
 # ============================================================
@@ -141,18 +142,19 @@ class GammaGLM(D.Gamma, GLMMixin):
 
 
 class NegativeBinomialGLM(D.NegativeBinomial, GLMMixin):
-    """Negative Binomial GLM (log link).
-
-    Var[Y] = mu + scale * mu^2, total_count = 1 / scale
+    """Negative Binomial GLM with log link.
+    Var[Y] = mu + scale * mu^2, total_count = 1/scale
     """
 
     def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
         self.linpar = linpar
         self.scale = torch.as_tensor(scale, device=linpar.device)
+
         mu = torch.exp(linpar)
-        total_count = 1.0 / self.scale
-        p = total_count / (total_count + mu)
-        super().__init__(total_count=total_count, probs=p)
+        total_count = 1.0 / self.scale  # r
+        probs = total_count / (total_count + mu)  # p
+
+        super().__init__(total_count=total_count, probs=probs)
 
     def eta(self) -> torch.Tensor:
         return self.linpar
@@ -160,15 +162,8 @@ class NegativeBinomialGLM(D.NegativeBinomial, GLMMixin):
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return y
 
-    @property
-    def total_count_param(self) -> torch.Tensor:
-        return 1.0 / self.scale
-
-    @property
-    def probs_param(self) -> torch.Tensor:
-        mu = torch.exp(self.linpar)
-        r = self.total_count_param
-        return r / (r + mu)
+    def __repr__(self):
+        return f"NegativeBinomialGLM(linpar={self.linpar}, scale={self.scale})"
 
 
 # ============================================================
@@ -177,15 +172,20 @@ class NegativeBinomialGLM(D.NegativeBinomial, GLMMixin):
 
 
 class BinomialGLM(D.Binomial, GLMMixin):
-    """Binomial GLM (logit link).
-
-    Var[Y] = n * p * (1 - p), fixed scale = 1 (internally)
+    """Binomial GLM with logit link.
+    Var[Y] = n * p * (1-p)
+    Remarks: the scale argument is needed for standardization.
     """
 
-    def __init__(self, linpar: torch.Tensor, total_count: Any = 1):
+    def __init__(
+        self,
+        linpar: torch.Tensor,
+        total_count: Any = 1,
+        scale: float | torch.Tensor = 1.0,
+    ):
         self.linpar = linpar
         self.total_count = total_count
-        self.scale = torch.tensor(1.0, device=linpar.device)  # internal only
+        self.scale = torch.tensor(1.0, device=linpar.device)  # placeholder only
         super().__init__(total_count=total_count, logits=linpar)
 
     def eta(self) -> torch.Tensor:
@@ -194,56 +194,5 @@ class BinomialGLM(D.Binomial, GLMMixin):
     def T(self, y: torch.Tensor) -> torch.Tensor:
         return y
 
-    @property
-    def probs_param(self) -> torch.Tensor:
-        return torch.sigmoid(self.linpar)
-
-
-# ============================================================
-# Example usage
-# ============================================================
-
-if __name__ == "__main__":
-    linpar = torch.tensor([0.0, 1.0, -1.0])
-    scale = torch.tensor([1, 0.5, 2])
-
-    print("=== Gaussian GLM ===")
-    g = GaussianGLM(linpar, scale=scale)
-    y = g.sample()
-    print("Samples:", y)
-    print("scale:", g.scale)
-    print("zq_log:", g.zq_log(y))
-    print()
-
-    print("=== Poisson GLM ===")
-    p = PoissonGLM(linpar)
-    y = p.sample()
-    print("Samples:", y)
-    print("zq_log:", p.zq_log(y))
-    print()
-
-    print("=== Gamma GLM ===")
-    ga = GammaGLM(linpar, scale=scale)
-    y = ga.sample()
-    print("Samples:", y)
-    print("shape:", ga.shape)
-    print("rate:", ga.rate)
-    print("zq_log:", ga.zq_log(y))
-    print()
-
-    print("=== Negative Binomial GLM ===")
-    nb = NegativeBinomialGLM(linpar, scale=scale)
-    y = nb.sample()
-    print("Samples:", y)
-    print("total_count:", nb.total_count_param)
-    print("p:", nb.probs_param)
-    print("zq_log:", nb.zq_log(y))
-    print()
-
-    print("=== Binomial GLM ===")
-    b = BinomialGLM(linpar, total_count=5)
-    y = b.sample()
-    print("Samples:", y)
-    print("p:", b.probs_param)
-    print("zq_log:", b.zq_log(y))
-    print()
+    def __repr__(self):
+        return f"BinomialGLM(linpar={self.linpar}, total_count={self.total_count})"
