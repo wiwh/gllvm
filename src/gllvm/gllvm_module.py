@@ -155,7 +155,7 @@ class GLLVM(nn.Module):
         self.bias = nn.Parameter(torch.zeros(self.p)) if bias else None
 
         # Universal scale parameter (dispersion)
-        self.scale = nn.Parameter(torch.ones(self.p))
+        self.log_scale = nn.Parameter(torch.zeros(self.p))
 
         # GLM assignment list
         self.families: List[GLMFamily] = []
@@ -164,6 +164,9 @@ class GLLVM(nn.Module):
     # --------------------------------------------------------
     # Building the model
     # --------------------------------------------------------
+    @property
+    def scale(self) -> torch.Tensor:
+        return torch.exp(torch.clamp(self.log_scale, -10, 10))
 
     def add_glm(
         self,
