@@ -148,7 +148,7 @@ class GLLVM(nn.Module):
 
         # Loadings for covariates
         self.wx = (
-            nn.Parameter(torch.randn(self.k, self.p) * 0.1) if self.k > 0 else None
+            nn.Parameter(torch.randn(self.k, self.p) * 0.5) if self.k > 0 else None
         )
 
         # Optional per-response intercept
