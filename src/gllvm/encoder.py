@@ -96,6 +96,10 @@ class EncoderPosteriorSupervised(nn.Module):
         inv_sigma2 = torch.exp(-logvar)
         nll = 0.5 * ((z_true - mu) ** 2 * inv_sigma2 + logvar).mean()
 
+        # some regularization o z:
+        regul = 0.5 * (mu**2 + torch.exp(logvar)).mean()
+        nll += regul
+
         return nll, -nll.item()
 
 
@@ -106,7 +110,7 @@ class EncoderMAP(nn.Module):
             nn.Linear(input_dim, hidden),
             nn.ReLU(),
             nn.Linear(hidden, hidden),
-            nn.ReLU(),
+            nn.Sigmoid(),
         )
         self.mu = nn.Linear(hidden, latent_dim)
 
@@ -130,3 +134,116 @@ class EncoderMAP(nn.Module):
         # MAP = maximize (log p(y|z) + log p(z))
         loss = -(logp_ygz + lpz).mean()
         return loss, -loss.item()
+
+
+class EncoderMAPSupervised(nn.Module):
+    def __init__(self, input_dim, latent_dim, hidden=32):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(input_dim, hidden),
+            nn.ReLU(),
+            nn.Linear(hidden, hidden),
+            nn.ReLU(),
+        )
+        self.mu = nn.Linear(hidden, latent_dim)
+
+    def forward(self, y):
+        return self.mu(self.net(y))
+
+    def sample(self, y):
+        z = self.forward(y)
+        return z, z, torch.zeros_like(z)
+
+    def loss(self, y, gllvm):
+        with torch.no_grad():
+            z_sim = gllvm.sample_z(len(y))
+            y_sim = gllvm.sample(z=z_sim)
+
+        z_est = self.forward(y_sim)
+        # prior log p(z)
+
+        loss = ((z_sim - z_est) ** 2).sum(dim=-1).mean()
+        loss_regul = 0.5 * (z_est**2).mean()
+        loss += loss_regul
+
+        return loss, -loss.item()
+
+
+class EncoderGaussianApprox(nn.Module):
+    def __init__(self, gllvm, normalize=False):
+        super().__init__()
+        self.gllvm = gllvm
+        self.normalize = normalize
+
+        # Buffer for (X^T X)^{-1}, updated once per epoch by the fitter
+        q = gllvm.wz.shape[1]
+        self.register_buffer("inv_xtx", torch.eye(q))
+
+    def forward(self, y, cols=None):
+        """
+        Linear MAP-like approximation to z | y.
+        If cols is given, y contains only those selected features.
+        """
+
+        with torch.no_grad():
+
+            # -----------------------------------------------------
+            # Select appropriate loadings + bias block
+            # -----------------------------------------------------
+            if cols is None:
+                X = self.gllvm.wz  # [p, q]
+                bias = self.gllvm.bias  # [p]
+            else:
+                X = self.gllvm.wz[cols]  # [B, q]
+                bias = None if self.gllvm.bias is None else self.gllvm.bias[cols]
+
+            # -----------------------------------------------------
+            # Approximate sufficient statistic log(1 + y) − bias
+            # -----------------------------------------------------
+            Y_approx = torch.log1p(y)
+            if bias is not None:
+                Y_approx = Y_approx - bias
+
+            # -----------------------------------------------------
+            # Solve linear system using precomputed inverse
+            # XtY = Xᵀ Y    →    z = (Xᵀ X)⁻¹ Xᵀ Y
+            # -----------------------------------------------------
+            XtY = X.T @ Y_approx.T  # [q, n]
+            Z_est = (self.inv_xtx @ XtY).T  # [n, q]
+
+            # -----------------------------------------------------
+            # Optional normalization: mean 0, std 1 per latent dim
+            # -----------------------------------------------------
+            if self.normalize:
+                # TODO: normalize using a moving average!!!!! not per batch!!! (DOH!)
+                mean = Z_est.mean(dim=0, keepdim=True)
+                std = Z_est.std(dim=0, keepdim=True) + 1e-6
+                Z_est = (Z_est - mean) / std
+            else:
+                Z_est *= 2.0
+
+        # ---------------------------------------------------------
+        # Empirical scaling factor (your design)
+        # ---------------------------------------------------------
+        return Z_est
+
+    def sample(self, y, cols=None):
+        z = self.forward(y, cols=cols)
+        return z, z, None
+
+
+def _fast_log_approx(X, Y, O=None):
+    # X is [p, q]
+    # Y is [n, p]
+    # O is [n, 1] or None -> broadcasted
+
+    Y_approx = torch.log1p(Y)
+    if O is not None:
+        Y_approx = Y_approx - O  # offset broadcasted
+
+    # Solve linear system X B = Y_approx
+
+    XtX = X.T @ X  # [q,q]  # same across all n
+    XtY = X.T @ Y_approx.T  # [q,n]
+    Z_est = torch.linalg.solve(XtX, XtY).T  # [n,q]
+    return 2 * Z_est

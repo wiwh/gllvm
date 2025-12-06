@@ -144,11 +144,11 @@ class GLLVM(nn.Module):
         self.k = feature_dim
 
         # Loadings for latent variables
-        self.wz = nn.Parameter(torch.randn(self.q, self.p))
+        self.wz = nn.Parameter(torch.randn(self.p, self.q))
 
         # Loadings for covariates
         self.wx = (
-            nn.Parameter(torch.randn(self.k, self.p) * 0.5) if self.k > 0 else None
+            nn.Parameter(torch.randn(self.p, self.k) * 0.5) if self.k > 0 else None
         )
 
         # Optional per-response intercept
@@ -215,12 +215,12 @@ class GLLVM(nn.Module):
         """
         self._check_assignments()
 
-        linpar = z @ self.wz
+        linpar = z @ self.wz.T
 
         if self.k > 0:
             if x is None:
                 raise ValueError("Covariates x must be provided when num_covar > 0.")
-            linpar = linpar + x @ self.wx
+            linpar = linpar + x @ self.wx.T
 
         if self.bias is not None:
             linpar = linpar + self.bias
@@ -291,6 +291,55 @@ class GLLVM(nn.Module):
 
         return y
 
+    def sample_features(self, z, cols, x=None):
+        """
+        Blockwise sampling for only a subset of features.
+
+        z:    [n, q]
+        cols: [B] feature indices
+        x:    optional covariates
+        """
+
+        self._check_assignments()
+
+        n = z.shape[0]
+        device = z.device
+
+        # Compute full linpar but extract block
+        linpar_full = self.forward(z, x)  # [n, p]
+        linpar = linpar_full[:, cols]  # [n, B]
+
+        # Pre-select bias and scale block
+        bias_block = None
+        if self.bias is not None:
+            bias_block = self.bias[cols]  # [B]
+
+        scale_block = self.scale[cols]  # [B]
+
+        # Allocate result
+        y_block = torch.empty((n, len(cols)), device=device)
+
+        # For each GLM family, sample only overlapping part
+        for fam in self.families:
+            idx = fam.idx  # [p_fam]
+
+            # intersection between cols and fam.idx
+            mask = torch.isin(cols, idx)
+            if not mask.any():
+                continue
+
+            # Actual subset of columns belonging to this family
+            cols_sub = cols[mask]
+            lp_sub = linpar[:, mask]  # [n, num_sub]
+
+            # Scale + bias per family subset
+            sc_sub = scale_block[mask]
+
+            dist = fam(linpar=lp_sub, scale=sc_sub)
+            y_block[:, mask] = dist.sample()
+
+        return y_block
+
     def mean(self, *, linpar=None, z=None, x=None):
         """
         Compute the mean of each response under its GLM family.
@@ -342,7 +391,7 @@ class GLLVM(nn.Module):
             sc_slice = self.scale[idx]
 
             dist = glm(linpar=lp_slice, scale=sc_slice)
-            result[:, idx] = dist.mean()
+            result[:, idx] = dist.mean
 
         return result
 
@@ -413,6 +462,184 @@ class GLLVM(nn.Module):
             logp[:, idx] = dist.zq_log(y[:, idx])
 
         return logp
+
+    def mean_block(self, z, cols, x=None):
+        linpar_full = self.forward(z, x)
+        linpar = linpar_full[:, cols]
+
+        if self.bias is not None:
+            linpar = linpar + self.bias[cols]
+
+        scale_block = self.scale[cols]
+
+        out = torch.empty_like(linpar)
+
+        for fam in self.families:
+            idx = fam.idx
+            mask = torch.isin(cols, idx)
+            if not mask.any():
+                continue
+
+            lp_sub = linpar[:, mask]
+            sc_sub = scale_block[mask]
+
+            dist = fam(linpar=lp_sub, scale=sc_sub)
+            out[:, mask] = dist.mean()
+
+        return out
+
+    def zq_log_block(self, y_block, z, cols, x=None):
+        self._check_assignments()
+
+        linpar_full = self.forward(z, x)
+        linpar = linpar_full[:, cols]
+
+        scale_block = self.scale[cols]
+        logp = torch.zeros_like(y_block)
+
+        for fam in self.families:
+            idx = fam.idx
+
+            mask = torch.isin(cols, idx)
+            if not mask.any():
+                continue
+
+            lp_sub = linpar[:, mask]
+            y_sub = y_block[:, mask]
+            sc_sub = scale_block[mask]
+
+            dist = fam(linpar=lp_sub, scale=sc_sub)
+            logp[:, mask] = dist.zq_log(y_sub)
+
+        return logp
+
+    def deviance(self, y, *, z=None, linpar=None, x=None):
+        """
+        Compute total deviance for all features.
+
+        Parameters
+        ----------
+        y : (n, p)
+        z : (n, q) optional
+        linpar : (n, p) optional
+        x : (n, k) optional
+
+        Returns
+        -------
+        dev : scalar tensor
+        """
+        self._check_assignments()
+
+        # Determine linpar
+        if linpar is None:
+            if z is None:
+                raise ValueError("Provide either linpar or z.")
+            linpar = self.forward(z, x)
+
+        # Compute model means once (broadcasted)
+        mu = self.mean(linpar=linpar)
+
+        total = 0.0
+
+        # Loop over GLM families
+        for fam in self.families:
+            idx = fam.idx
+            lp_slice = linpar[:, idx]
+            mu_slice = mu[:, idx]
+            y_slice = y[:, idx]
+            sc_slice = self.scale[idx]
+
+            glm = fam(linpar=lp_slice, scale=sc_slice)
+            total += glm.deviance(y_slice).sum()
+
+        return total
+
+    def deviance_block(self, y_block, z_block, cols, *, x_block=None):
+        """
+        Compute deviance on a COLUMN BLOCK only.
+
+        Parameters
+        ----------
+        y_block : (mb, B)
+            minibatch of responses with selected features
+        z_block : (mb, q)
+            minibatch latent variables
+        cols : (B,)
+            feature indices corresponding to the columns of y_block
+        x_block : optional (mb, k)
+
+        Returns
+        -------
+        dev : scalar tensor
+        """
+        self._check_assignments()
+
+        # Compute linear predictor for selected columns
+        lin_full = self.forward(z_block, x_block)  # (mb, p)
+        lin_block = lin_full[:, cols]  # (mb, B)
+
+        # Means for selected columns
+        mu_full = self.mean(linpar=lin_full)  # (mb, p)
+        mu_block = mu_full[:, cols]  # (mb, B)
+
+        total = 0.0
+
+        # Loop over GLM families
+        for fam in self.families:
+            fam_idx = fam.idx
+
+            # mask: which of 'cols' belong to this GLM family?
+            mask = torch.isin(cols, fam_idx)
+            if not mask.any():
+                continue  # skip non-overlapping families
+
+            # Map global → block-local feature positions
+            block_cols = mask.nonzero().squeeze(-1)
+
+            y_slice = y_block[:, block_cols]
+            lp_slice = lin_block[:, block_cols]
+            mu_slice = mu_block[:, block_cols]
+            sc_slice = self.scale[cols[block_cols]]
+
+            glm = fam(linpar=lp_slice, scale=sc_slice)
+            total += glm.deviance(y_slice).sum()
+
+        return total
+
+    def initialize(self, y, eps=1e-3):
+        """
+        Initialize per-feature bias so that the model mean matches the empirical mean.
+        GLM-family aware: uses the correct intercept rule for each block.
+        """
+
+        y = y.to(self.wz.device)
+        for fam in self.families:
+            idx = fam.idx
+            y_col = y[:, idx]
+
+            # Empirical mean per feature
+            m = y_col.mean(0).clamp_min(eps)
+
+            if self.bias is not None:
+                if fam.GLM.__name__ == "PoissonGLM":
+                    self.bias.data[idx] = torch.log(m)
+
+                elif fam.GLM.__name__ == "GammaGLM":
+                    self.bias.data[idx] = torch.log(m)
+
+                elif fam.GLM.__name__ == "NegativeBinomialGLM":
+                    self.bias.data[idx] = torch.log(m)
+
+                elif fam.GLM.__name__ == "BinomialGLM":
+                    total = fam.params.get("total_count", 1)
+                    p = (m / total).clamp(1e-5, 1 - 1e-5)
+                    self.bias.data[idx] = torch.log(p / (1 - p))
+
+                else:
+                    # fallback: mean-matching through canonical link
+                    self.bias.data[idx] = torch.log(m)
+
+        print("✓ GLLVM bias initialized from data.")
 
     # --------------------------------------------------------
     # Representation

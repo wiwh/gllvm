@@ -50,8 +50,8 @@ def procrustes_align_wz(W_true, W_est):
     """
 
     # convert to numpy and transpose for Procrustes
-    A = to_np(W_true).T  # (p × q)
-    B = to_np(W_est).T  # (p × q)
+    A = to_np(W_true)  # (p × q)
+    B = to_np(W_est)  # (p × q)
 
     # handle q = 1 separately (sign ambiguity only)
     if A.shape[1] == 1:
@@ -68,4 +68,4 @@ def procrustes_align_wz(W_true, W_est):
     B_aligned = B @ R
 
     # return in original (q × p) format
-    return A.T, B_aligned.T, R
+    return A, B_aligned, R
