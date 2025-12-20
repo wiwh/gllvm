@@ -247,3 +247,92 @@ def _fast_log_approx(X, Y, O=None):
     XtY = X.T @ Y_approx.T  # [q,n]
     Z_est = torch.linalg.solve(XtX, XtY).T  # [n,q]
     return 2 * Z_est
+
+
+# QUANTILE VERSION
+import torch
+import torch.nn as nn
+from torch.distributions.normal import Normal
+
+
+class EncoderGaussianProjected(nn.Module):
+    def __init__(self, gllvm, ema_momentum=0.05):
+        super().__init__()
+        self.gllvm = gllvm
+        self.m = ema_momentum
+
+        q = gllvm.wz.shape[1]
+        self.register_buffer("inv_xtx", torch.eye(q))
+
+        # running stats per latent dim (q dims)
+        self.register_buffer("running_mean", torch.zeros(q))
+        self.register_buffer("running_std", torch.ones(q))
+
+        self.std_normal = Normal(0.0, 1.0)
+
+    def _update_ema(self, z_batch):
+        """
+        z_batch: [n, q]
+        update running mean/std per dimension
+        """
+        batch_mean = z_batch.mean(0)
+        batch_std = z_batch.std(0) + 1e-6
+
+        self.running_mean = (1 - self.m) * self.running_mean + self.m * batch_mean
+        self.running_std = (1 - self.m) * self.running_std + self.m * batch_std
+
+    def _project_gaussian(self, z_batch):
+        """
+        Project each latent dimension to N(0,1)
+        z_batch: [n, q]
+        """
+        z_norm = (z_batch - self.running_mean) / self.running_std.clamp(min=1e-6)
+        u = 0.5 * (1.0 + torch.erf(z_norm / torch.sqrt(torch.tensor(2.0))))
+        u = u.clamp(1e-6, 1 - 1e-6)
+        return self.std_normal.icdf(u)
+
+    def forward(self, y, cols=None):
+        """
+        y: [n, p]
+        output: [n, q]
+        """
+
+        # ---------------------------------------
+        # Select X, bias: shapes depend on cols
+        # ---------------------------------------
+        if cols is None:
+            X = self.gllvm.wz  # [p, q]
+            bias = self.gllvm.bias  # [p]
+        else:
+            X = self.gllvm.wz[cols]  # [B, q]
+            bias = None if self.gllvm.bias is None else self.gllvm.bias[cols]
+
+        # ---------------------------------------
+        # Compute Y_approx: [n, p]
+        # ---------------------------------------
+        Y_approx = torch.log1p(y)
+        if bias is not None:
+            Y_approx = Y_approx - bias  # broadcasted
+
+        # ---------------------------------------
+        # XtY = Xᵀ Yᵀ → [q, n]
+        # ---------------------------------------
+        XtY = X.T @ Y_approx.T  # [q, n]
+
+        # z = (XᵀX)⁻¹ XtY  → [n, q]
+        z = (self.inv_xtx @ XtY).T  # transpose to [n, q]
+
+        # your original scaling
+        z = 2.0 * z
+
+        # update running distribution
+        self._update_ema(z)
+
+        # Gaussian projection
+        z_proj = self._project_gaussian(z)
+
+        return z_proj  # shape [n, q]
+
+    def sample(self, y, cols=None):
+        z = self.forward(y, cols)
+        return z, z, None
