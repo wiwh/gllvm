@@ -1,0 +1,356 @@
+\documentclass{beamer}
+\usepackage{amsmath, amssymb, bm}
+\usepackage{graphicx}
+
+\title{Latent Risk Modeling: SME Estimation}
+\author{}
+\date{}
+
+\begin{document}
+
+\frame{\titlepage}
+
+\begin{frame}{1. Latent Variable Model (Generative Process)}
+\begin{align*}
+\mathbf{Z} &\sim \pi(\bm{z}) \\
+\mathbf{Y} \mid \mathbf{Z} &\sim f_\theta(\bm{y} \mid \bm{z})
+\end{align*}
+
+\begin{equation*}
+f_\theta(\bm{y}) = \int_{\mathcal{Z}} f_\theta(\bm{y} \mid \bm{z}) \, \pi(\bm{z}) \, d\bm{z}
+\end{equation*}
+
+\begin{equation*}
+\frac{1}{n} \sum_{i=1}^n \log \left( \int_{\mathcal{Z}} f_\theta(\bm{y}_i \mid \bm{z}) \, \pi(\bm{z}) \, d\bm{z} \right)
+\end{equation*}
+
+\end{frame}
+
+\begin{frame}{2. Maximum Likelihood Estimating Equation}
+\begin{equation*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \pi_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right] = 0
+\end{equation*}
+\end{frame}
+
+\begin{frame}{3. Approximate Estimating Equation (Biased)}
+\begin{equation*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \pi_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right] = 0
+\end{equation*}
+\begin{equation*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right]
+= 0
+\end{equation*}
+\begin{equation*}
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right]
+\right] \neq 0
+\end{equation*}
+\begin{equation*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right]
+=
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right]
+\right]
+\end{equation*}
+\begin{align*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\psi_\theta(\mathbf{Y}, \mathbf{Z})
+\right]
+&=
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\psi_\theta(\mathbf{Y}, \mathbf{Z})
+\right]
+\right]
+\end{align*}
+\end{frame}
+
+\begin{frame}{4. SME Estimating Equation (Bias-Corrected \& Consistent)}
+\begin{equation*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\psi_\theta(\bm{y}_i, \mathbf{Z})
+\right]
+=
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\psi_\theta(\mathbf{Y}, \mathbf{Z})
+\right]
+\right]
+\end{equation*}
+\end{frame}
+
+\begin{frame}{5. Estimating Function for Exponential Family}
+If \( f_\theta(\bm{y} \mid \bm{z}) \) belongs to the exponential family:
+\begin{equation*}
+\psi_\theta(\bm{y}, \bm{z}) 
+= T(\bm{y}) \cdot \frac{\partial \eta(\bm{z}, \theta)}{\partial \theta}
+\end{equation*}
+
+Then SME becomes:
+\begin{align*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+T(\bm{y}_i) \cdot 
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+&=
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+T(\mathbf{Y}) \cdot 
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+\right]
+\end{align*}
+\end{frame}
+
+
+\begin{frame}{5. Estimating Function for Exponential Family}
+If \( f_\theta(\bm{y} \mid \bm{z}) \) belongs to the exponential family:
+\begin{equation*}
+\psi_\theta(\bm{y}, \bm{z}) 
+= T(\bm{y}) \cdot \frac{\partial \eta(\bm{z}, \theta)}{\partial \theta}
+\end{equation*}
+
+Then SME becomes:
+\begin{align*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+&\left[
+T(\bm{y}_i) \cdot 
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right] \\
+&=
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+T(\mathbf{Y}) \cdot 
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+\right]
+\end{align*}
+\end{frame}
+
+\begin{frame}{6. Exponential Family Form}
+
+A probability distribution belongs to the exponential family if it can be written as:
+\begin{equation*}
+f_\theta(\mathbf{y} \mid \mathbf{z}) 
+= h(\mathbf{y}) \exp\left\{
+T(\mathbf{y})^\top \eta(\mathbf{z}, \theta) - A(\mathbf{z}, \theta)
+\right\}
+\end{equation*}
+
+\vspace{1em}
+
+Then the score (gradient of the log-likelihood) is:
+\begin{equation*}
+\frac{\partial}{\partial \theta} \log f_\theta(\mathbf{y} \mid \mathbf{z}) 
+= T(\mathbf{y})^\top \cdot \frac{\partial \eta(\mathbf{z}, \theta)}{\partial \theta}
+- \frac{\partial A(\mathbf{z}, \theta)}{\partial \theta}
+\end{equation*}
+
+\end{frame}
+
+
+
+\begin{frame}{6. Exponential Family Form}
+
+A distribution belongs to the exponential family if:
+\begin{equation*}
+f_\theta(\mathbf{Y} \mid \mathbf{z}) 
+= h(\mathbf{Y}) \exp\left\{
+T(\mathbf{Y})^\top \eta(\mathbf{z}, \theta) - A(\mathbf{z}, \theta)
+\right\}
+\end{equation*}
+
+\vspace{0.5em}
+Then the score (gradient of the log-likelihood) is:
+\begin{equation*}
+\frac{\partial}{\partial \theta} \log f_\theta(\mathbf{Y} \mid \mathbf{z}) 
+= \frac{\partial \eta(\mathbf{z}, \theta)}{\partial \theta}^\top 
+\left[
+T(\mathbf{Y}) - \mathbb{E}_\theta \left[ T(\mathbf{Y}) \mid \mathbf{z} \right]
+\right]
+\end{equation*}
+
+\end{frame}
+
+\begin{frame}{7. Gradient of the Marginal Likelihood}
+
+We consider the marginal likelihood:
+\begin{equation*}
+\log f_\theta(\mathbf{y}_i) 
+= \log \int f_\theta(\mathbf{y}_i \mid \mathbf{z}) \, p_\theta(\mathbf{z}) \, d\mathbf{z}
+\end{equation*}
+
+Its gradient is:
+\begin{align*}
+\frac{\partial}{\partial \theta} \log f_\theta(\mathbf{y}_i)
+&= \underbrace{\mathbb{E}_{\tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i)} \left[
+\frac{\partial \eta(\mathbf{z}, \theta)}{\partial \theta}^\top T(\mathbf{y}_i)
+\right]}_{\textbf{Observed data term}} \\
+&\quad - \underbrace{\mathbb{E}_{p_\theta(\mathbf{z})} \left[
+\frac{\partial \eta(\mathbf{z}, \theta)}{\partial \theta}^\top 
+\mathbb{E}_{f_\theta(\mathbf{Y} \mid \mathbf{z})} \left[ T(\mathbf{Y}) \right]
+\right]}_{\textbf{Model prediction under prior}}
+\end{align*}
+
+\end{frame}
+
+\begin{frame}{Exponential Family and Score Matching Equation}
+
+\vspace{1em}
+\textbf{Exponential Family:}
+\begin{equation*}
+f_\theta(\mathbf{Y} \mid \mathbf{Z}) = \exp\left( 
+T(\mathbf{Y})^\top \eta(\mathbf{Z}, \theta) - A(\eta(\mathbf{Z}, \theta)) + B(\mathbf{Y})
+\right)
+\end{equation*}
+
+\vspace{1em}
+\textbf{SME Estimating Equation:}
+\begin{multline*}
+\frac{1}{n}\sum_{i=1}^n \mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i)} 
+\left[
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}^\top T(\mathbf{y}_i)
+\right] = \\ \mathbb{E}_{\mathbf{Y} \sim f_\theta(\mathbf{y})} \left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{Y})}
+\left[
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}^\top T(\mathbf{Y})
+\right]
+\right]
+\end{multline*}
+
+\end{frame}
+
+
+\begin{frame}{SME vs. VAE Gradient: Key Differences}
+
+\textbf{Surrogate Moment Estimator (SME) Score:}
+\[
+\sum_{i=1}^n \left[
+T(\mathbf{y}_i)
+\cdot
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i)}
+\left[
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+-
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\mathbf{y})}
+\left[
+T(\mathbf{Y})
+\cdot
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{Y})}
+\left[
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+\right]
+\right]
+\]
+
+\vspace{1em}
+
+\textbf{VAE Gradient (ELBO Score):}
+\[
+\sum_{i=1}^n
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i)}
+\left[
+\frac{\partial \log f_\theta(\mathbf{y}_i \mid \mathbf{Z})}{\partial \theta}
+\right]
+\]
+
+\vspace{1em}
+
+\textbf{Key Difference:} SME directly targets the marginal score using sufficient statistics of the exponential family, while VAE differentiates the \textit{conditional} log-likelihood and requires a tractable decoder \( f_\theta(\mathbf{y} \mid \mathbf{z}) \).
+
+\end{frame}
+
+\begin{frame}{SME vs. VAE Gradient: Expanded Comparison}
+
+\textbf{SME (Surrogate Moment Estimator) Gradient:}
+\[
+\sum_{i=1}^n \left[
+T(\mathbf{y}_i)
+\cdot
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i)}
+\left[
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+-
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\mathbf{y})}
+\left[
+T(\mathbf{Y})
+\cdot
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{Y})}
+\left[
+\frac{\partial \eta(\mathbf{Z}, \theta)}{\partial \theta}
+\right]
+\right]
+\right]
+\]
+
+\vspace{1em}
+
+\textbf{VAE Gradient (ELBO):}
+\[
+\sum_{i=1}^n
+\left[
+\underbrace{
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i)}
+\left[
+\frac{\partial \log f_\theta(\mathbf{y}_i \mid \mathbf{Z})}{\partial \theta}
+\right]
+}_{\text{Reconstruction term (data fit)}}
+-
+\underbrace{
+\frac{\partial}{\partial \theta} \text{KL} \left[ \tilde{\pi}_\theta(\mathbf{z} \mid \mathbf{y}_i) \| p(\mathbf{z}) \right]
+}_{\text{Regularization term (prior match)}}
+\right]
+\]
+
+\vspace{1em}
+
+\textbf{Comment:}  
+SME approximates the marginal score \(\frac{\partial}{\partial \theta} \log f_\theta(\mathbf{y}_i)\) via moments,  
+while VAE optimizes a lower bound with a KL penalty and a tractable conditional likelihood.
+
+\end{frame}
+
+
+\end{document}

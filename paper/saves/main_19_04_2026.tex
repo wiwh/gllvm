@@ -1,0 +1,1995 @@
+    \documentclass[twoside,11pt]{article}
+% HEIN QUOI
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+\usepackage{jmlr2e}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{preamble}
+\usepackage{booktabs}
+\usepackage{ulem}
+\usepackage[most]{tcolorbox}  % Required for the colored box
+
+\newcommand{\Var}{\operatorname{Var}}
+
+% todo
+ \setlength {\marginparwidth }{2cm} % TODO: REMOVE THAT later
+\usepackage{todonotes}
+\definecolor{lightred}{RGB}{120,60,60}
+\definecolor{darkred}{RGB}{255,0,0}
+\newcommand{\proofread}[1]{{\color{lightred}#1}}
+\newcommand{\rewrite}[2]{{\color{darkred}#1}}
+
+\definecolor{gbcolor}{RGB}{220, 160, 180}
+\newcommand{\gb}[2][]{\todo[color=gbcolor, caption={GB}, #1]{#2}}
+\definecolor{jbcolor}{RGB}{180, 220, 200}
+\newcommand{\jb}[2][]{\todo[color=jbcolor, caption={JB}, #1]{#2}}
+\definecolor{bpcolor}{RGB}{255, 128, 10}
+\newcommand{\bp}[2][]{\todo[color=bpcolor, caption={BP}, #1]{#2}}
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+% Heading arguments are {volume}{year}{pages}{submitted}{published}{author-full-names}
+
+\jmlrheading{1}{2000}{1-48}{4/00}{10/00}{Blanc}
+
+% Short headings should be running head and authors last names
+
+\ShortHeadings{Zq Estimation for Latent Variable Models}{}
+\firstpageno{1}
+
+\begin{document}
+
+\title{Consistent Decoder Estimation in Latent Variable Models with Misspecified Encoders}
+
+\author{\name Guillaume Blanc \email guillaume.e.blanc@gmail.com
+  \AND
+  \name Julien Bodelet \email julien.bodelet@gmail.com
+  \AND
+  \name Benjamin Poilane \email benjamin@protonmail.com
+}
+
+\editor{} % lol
+
+\maketitle
+
+\begin{abstract}
+
+We study decoder estimation in latent variable models when posterior inference is approximate, misspecified, or reused across datasets. In such settings, standard approaches—variational methods, plug-in estimators, or EM with an incorrect posterior—yield biased parameter estimates.
+
+We introduce the $Z_q$ estimator, a centered Z-estimation framework that restores consistency of decoder parameters without requiring accurate posterior inference. The method treats the inference mechanism as fixed and constructs estimating equations whose population expectation vanishes by design. As a result, decoder parameters can be consistently estimated using arbitrary surrogate posteriors, including pretrained encoders, MAP imputations, or misspecified inference models.
+
+We establish consistency and asymptotic normality under a local Jacobian condition, showing that posterior accuracy affects efficiency but not correctness. This enables two regimes of practical importance: (i) computationally efficient learning with crude or underspecified inference, and (ii) transfer settings where a frozen encoder is reused under distribution shift.
+
+Empirically, we demonstrate that $Z_q$ remains stable under severe posterior misspecification in generalized linear latent variable models and amortized inference settings, where standard variational estimators exhibit persistent bias. These results show that accurate generative parameter estimation does not require accurate posterior inference, provided the estimation step is properly centered.
+
+\end{abstract}
+
+
+
+\newpage
+
+\listoftodos
+\newpage
+
+\section{Notations}
+\input{notations}
+\newpage
+
+
+The tight story (one line)
+
+We show that decoder parameters can be consistently estimated using a fixed, misspecified inference mechanism—including pretrained encoders or wrong-model MAP—by correcting the induced bias via centered estimating equations.
+
+How to structure it cleanly
+1. Core problem (lead with this)
+
+In latent variable models, inference is often approximate, reused, or misspecified. This leads to biased decoder estimation.
+
+Make it concrete immediately:
+
+reused encoder under population drift
+fast but wrong MAP imputation
+2. Failure mode
+
+Standard methods (ELBO, plug-in, EM with wrong posterior) produce biased estimates when the inference mechanism is mismatched.
+
+This is where population drift naturally appears:
+
+encoder trained on source
+applied on target
+mismatch → bias
+3. Your solution (core contribution)
+
+Treat the inference mechanism as fixed and construct centered estimating equations that remove the induced bias.
+
+No mention of “arbitrary q” here. Keep it operational.
+
+4. Two flagship regimes (this is where you unify)
+(A) Transfer / population drift
+encoder trained on source
+frozen
+reused under drift
+your method fixes bias
+(B) Wrong-model MAP (your strongest empirical result)
+linear model used for inference (cheap, wrong)
+produces latent map
+your method corrects bias
+enables massive scaling
+
+These are the same mathematically:
+
+both are just fixed misspecified q
+What becomes the main narrative?
+
+Lead with:
+
+reuse under mismatch
+
+Then show:
+
+drift → conceptual motivation
+wrong MAP → computational payoff
+What NOT to lead with
+
+Avoid leading with:
+
+“general Z-estimation framework”
+“arbitrary surrogate posterior”
+“theory-first presentation”
+
+Those are supporting, not driving.
+
+Clean paper spine
+Introduction
+Problem: inference mismatch (drift, reuse, crude approximations)
+Consequence: biased decoder learning
+Contribution: centered correction → consistency
+Method
+fixed q
+Z-estimation
+no differentiation through encoder
+Theory
+consistency under frozen q
+Jacobian condition
+Experiments
+A: wrong MAP (clear bias vs correction)
+B: large-scale GLLVM (your killer result)
+C: encoder reuse under drift (modern framing)
+Key positioning sentence
+
+You want something like:
+
+“We show that accurate generative parameter estimation does not require accurate posterior inference, provided the estimation step is properly centered.”
+
+Where population drift fits
+
+Population drift is:
+
+the motivating example
+the modern ML framing
+the reason people care about reuse
+
+But your strongest evidence is:
+
+the MAP + large-scale result
+
+So:
+
+drift = why this matters
+MAP = why this works in practice
+Bottom line
+
+Do not pick one story.
+
+Unify them as:
+
+robust estimation under reused or misspecified inference
+
+Then:
+
+use population drift to motivate
+use wrong MAP + scale to convince
+
+That gives you both conceptual depth and practical impact.
+
+\newpage
+
+\section{Introduction}
+
+Latent variable models are a standard way to represent complex dependence in multivariate data by introducing an unobserved variable $\Z$ that explains structure in an observed variable $\Y$.
+They underpin classical random-effects models, generalized latent variable models, and modern deep generative models.
+A typical specification is
+\begin{align}
+\Z &\sim f_{\Z}, \nonumber\\
+\Y \mid \Z &\sim f_{\Y\mid \Z;\,\bt},
+\label{eq:intro_generative}
+\end{align}
+where $\bt\in\bm\Theta$ denotes the decoder (generative) parameters.
+Inference for $\bt$ is typically based on the marginal likelihood of $\Y$,
+which requires integrating out $\Z$, and is often implemented through posterior expectations under $f_{\Z\mid\Y;\bt}$.
+Outside of a few special cases, these quantities are not available in closed form, and practical methods therefore replace $f_{\Z\mid\Y;\bt}$ by a tractable surrogate $q_{\Z\mid\Y}$.
+
+This includes variational EM and modern amortized inference methods such as variational autoencoders (VAEs), where $q_{\Z\mid\Y}$ is produced by an encoder network shared across observations \citep{dempster1977maximum,jordan1999introduction,kingma2014autoencoding,blei2017variational}.
+While these approaches scale well, they can induce systematic bias when $q_{\Z\mid\Y}$ is misspecified, underspecified, or reused under distribution shift.
+In particular, with amortized inference, mismatch between the encoder family and the true posterior---together with the additional gap introduced by amortization---can propagate into biased decoder updates that persist even as the sample size grows (often referred to as amortization bias or the amortization gap; see, e.g., \citealp{cremer2018inference}).
+Several lines of work aim to reduce the impact of mismatch between $q_{\Z\mid\Y}$ and $f_{\Z\mid\Y;\bt}$ by improving the variational approximation itself, including stochastic and black-box variational inference \citep{hoffman2013svi,ranganath2014bbvi}, richer variational families such as normalizing flows \citep{rezende2015flows}, tighter bounds such as importance-weighted objectives \citep{burda2016iwae}, and hybrid approaches that refine amortized solutions with per-instance optimization \citep{kim2018semiamortized}.
+
+This paper asks a simple question:
+\emph{can we estimate the decoder parameters $\bt$ consistently despite the use of an approximate surrogate $q_{\Z\mid\Y}$, possibly wrong, and even reused across datasets?}
+Our answer is yes, under a local identification condition.
+The key idea is to treat $q_{\Z\mid\Y}$ as a nuisance object and to build \emph{centered estimating equations} whose population expectation vanishes by construction.
+Concretely, we form an estimating function $\psi_q(\bt;\Y)$ computed from the observed data and expectations under $q_{\Z\mid\Y}$, and we subtract the same quantity averaged under the model $f_{\Y;\bt}$. This yields a Z-estimator \citep{vandervaart1998} for $\bt$ that is consistent, provided a Jacobian condition holds. While the quality of the surrogate $q_{\Z\mid\Y}$ matters for efficiency and identifiability, our empirical studies show that our method can accommodate considerable  misspecification. 
+
+1) This allows deep learning to be used for the encoder for latent variable models, for which standard methods may be difficult to use, without losing clean Z-estimation asympottic of the estimator.
+2) It allows deliberate use of a misspecified encoder that is computationally easy, but heavily biased.
+3) It allows the re-use of an encoder under population drift.
+
+
+Two consequences are worth emphasizing.
+First, decoder learning does not require differentiating through the procedure that produces $q_{\Z\mid\Y}$: the surrogate may come from a learned network, a pretrained inference module, a Laplace or MAP approximation, or a black-box routine, as long as it can provide draws or expectations.
+Second, the framework also covers classical \emph{imputation} as a special case.
+Indeed, if an imputer produces a single latent value $\tilde z(y)$, this corresponds to the degenerate surrogate $q_{\Z\mid\Y}(\cdot\mid y)=\delta_{\tilde z(y)}(\cdot)$.
+While naive plug-in estimation based on $\tilde z(y)$ is generally biased, centering restores a valid population estimating equation, so decoder estimation remains consistent under the same local identification condition.
+(See also the broader imputation perspective in \citealp{rubin1987multiple}.)
+
+\paragraph{Contributions and positioning.}
+This work takes a different perspective on decoder learning under approximate inference. 
+Rather than improving the surrogate posterior $q_{Z\mid Y}$ to better approximate the true posterior, we treat the encoder as a nuisance object and construct centered estimating equations whose population root coincides with the true decoder parameter for any surrogate posterior. 
+This reframes decoder estimation in latent-variable models as a Z-estimation problem and decouples statistical consistency from posterior accuracy. 
+In contrast to likelihood-surrogate and ELBO-based approaches---where consistency depends on how well $q_{Z\mid Y}$ approximates the true posterior---our estimator remains consistent under arbitrary, possibly misspecified or pretrained encoders, provided a local identification condition holds.
+
+This perspective has two important consequences. 
+First, it restores classical asymptotic guarantees---consistency and asymptotic normality---for decoder parameters without requiring refinement of the inference procedure. 
+Posterior quality affects efficiency but not correctness of the population root. 
+Second, it enables computationally natural training strategies in which encoders may be frozen, underspecified, reused across datasets, or even replaced by crude imputation rules, while retaining valid large-sample guarantees for the generative parameters.
+
+Conceptually, our approach shifts the focus from posterior approximation accuracy to construction of robust moment conditions for decoder estimation. 
+By embedding amortized and approximate inference within a Z-estimation framework, we provide a principled alternative to increasingly expressive variational families, and show that consistent generative learning does not require consistent posterior inference.
+
+
+
+\paragraph{Contributions.}
+Our contributions are as follows.
+First, we introduce the $Z_q$ estimator, a centered Z-estimation framework for latent variable models that decouples decoder consistency from the correctness of the surrogate posterior $q_{\Z\mid\Y}$.
+Second, we establish consistency and asymptotic normality under standard regularity conditions together with a local Jacobian nonsingularity assumption.
+Third, we provide interpretable sufficient conditions for nonsingularity by relating the Jacobian of the $Z_q$ estimating equations to the Fisher information of the correctly specified model.
+Finally, we describe practical variance estimation and inference procedures that avoid differentiating through $q_{\Z\mid\Y}$ and do not require access to the intractable marginal score.
+
+\paragraph{Empirical evaluation.}
+We design experiments to target regimes where encoder-based likelihood surrogates are expected to fail.
+First, we consider a generalized linear latent variable model (GLLVM) fitted with an intentionally wrong MAP-imputation rule under a misspecified model, illustrating that naive plug-in approaches can drift while the centered equations remain stable.
+Second, we study encoder reuse under distribution shift by perturbing the GLLVM decoder while keeping a fixed encoder trained on a reference model; standard ELBO-based updates exhibit persistent bias, whereas $Z_q$ recovers the perturbed decoder.
+Third, we consider a transfer setting on MNIST: we train an encoder on digits $0$--$8$, freeze it, and then fit a decoder for digit $9$ only; we compare standard VAE training to the $Z_q$ updates through decoder recovery and generative quality.
+We also include a controlled underspecification sweep in which encoder capacity is progressively reduced in a correctly specified GLLVM, isolating the robustness--efficiency trade-off predicted by the theory.
+
+\paragraph{On identification.}
+Local identification of the $Z_q$ estimator reduces to nonsingularity of the
+Jacobian of the induced population moment map.
+This condition is model-specific, as in classical likelihood theory for latent-variable models,
+and depends on how the decoder parameters enter the conditional distribution.
+A full characterization of identification across all latent-variable models
+is therefore beyond the scope of this work.
+We provide explicit verification in canonical settings (e.g., Gaussian factor models)
+and derive general sufficient conditions based on perturbations of the Fisher information.
+In addition, we show that among a natural class of centered estimating equations,
+the proposed construction minimizes first-order sensitivity to posterior misspecification,
+providing a robustness optimality result within that class.
+
+
+\paragraph{Organization.}
+Section~\ref{sec:method} defines the $Z_q$ estimating equations and relates them to classical likelihood identities in latent variable models.
+Section~\ref{sec:asymptotics} provides asymptotic theory and identification conditions.
+Section~\ref{sec:sims} describes the simulation designs, and Section~\ref{sec:results} reports empirical results.
+
+
+% ================== some ideas
+
+\begin{lemma}[Oracle decomposition at the truth]
+Under $q=f_{Z\mid Y;\theta}$, at $\theta_0$ the centered estimating function satisfies
+\[
+\psi_f(\theta_0;Y)-\mathbb E_{\theta_0}[\psi_f(\theta_0;Y)]
+=
+s(\theta_0;Y)+\Big(\tau_f(\theta_0;Y)-\mathbb E_{\theta_0}[\tau_f(\theta_0;Y)]\Big),
+\]
+where $s(\theta_0;Y)$ is the marginal score and
+$\tau_f(\theta;Y)=\E[D(Z;\theta)^\top \mu(Z;\theta)\mid Y]$.
+Moreover $\E_{\theta_0}[\psi_f(\theta_0;Y)]=\E_{\theta_0}[\tau_f(\theta_0;Y)]$.
+\end{lemma}
+
+
+% ============================== Version 03.02.2026
+\section{Method}
+\label{sec:method}
+
+\subsection{Model setup}
+
+We consider a parametric latent variable model in which an observed random vector
+$\Y \in \mathcal Y \subseteq \mathbb R^p$ is generated from an unobserved latent variable
+$\Z \in \mathcal Z \subseteq \mathbb R^q$ according to
+\[
+(\Y,\Z) \sim f_{\Y,\Z;\bt}(\cdot,\cdot)
+= f_{\Y\mid\Z;\bt}(\cdot\mid\cdot)\,f_\Z(\cdot),
+\]
+where $f_\Z$ is a known prior distribution and $\bt\in\Theta\subseteq\mathbb R^r$ denotes
+the decoder parameters of interest. The latent variable $\Z$ is never observed.
+
+Throughout, we assume that the conditional distribution $f_{\Y\mid\Z;\bt}$ belongs to
+a canonical exponential family, so that for $(\y,\z)\in\mathcal Y\times\mathcal Z$,
+\[
+f_{\Y\mid\Z;\bt}(\y\mid\z)
+=
+\exp\!\left\{
+T(\y)^\top \eta(\z,\bt)
+-
+A\!\bigl(\eta(\z,\bt)\bigr)
++
+B(\y)
+\right\},
+\]
+where $T(\y)$ is a sufficient statistic, $\eta(\z,\bt)$ is the natural parameter, and
+$A(\cdot)$ is the log-partition function. This formulation covers generalized linear
+latent variable models and decoder networks with exponential-family output layers.
+
+Because $\Z$ is unobserved, inference for $\bt$ is typically based on the marginal likelihood
+\[
+f_{\Y;\bt}(\y)=\int f_{\Y\mid\Z;\bt}(\y\mid\z)\,f_\Z(\z)\,d\z.
+\]
+Under standard regularity conditions, the maximum likelihood estimator (MLE) is a root of
+the empirical score. Writing
+\[
+s(\bt;\y) \vcentcolon = \nabla_\bt \log f_{\Y;\bt}(\y),
+\]
+the MLE $\hat\bt_{\mathrm{MLE}}$ satisfies
+\begin{equation}
+\frac{1}{n}\sum_{i=1}^n s(\bt;\y_i)=0.
+\label{eq:mle_score_eq}
+\end{equation}
+
+In latent variable models, the marginal score admits the posterior-expectation representation
+\begin{equation}
+s(\bt;\y)
+=
+\mathbb{E}_{f_{\Z\mid\Y;\bt}(\cdot\mid \y)}
+\!\left[
+\nabla_\bt \log f_{\Y,\Z;\bt}(y,Z)
+\right],
+\label{eq:score_posterior_form}
+\end{equation}
+which follows from standard identities (see Appendix~\ref{apx:mle-estimating-equations}) and
+coincides with the quantity used in the E-step of the EM algorithm.
+
+\subsection{Score decomposition and the matching form of the MLE}
+
+In the exponential-family setting above, the posterior form \eqref{eq:score_posterior_form}
+can be written as
+\begin{equation}
+s(\bt;\y)
+=
+\mathbb{E}_{f_{\Z\mid\Y;\bt}(\cdot\mid \y)}
+\!\left[
+D(\Z;\bt)^\top\bigl(T(\y)-\mu(\Z;\bt)\bigr)
+\right],
+\label{eq:score_expfam}
+\end{equation}
+where $D(\z;\bt)=\partial\eta(\z,\bt)/\partial\bt$ and
+$\mu(\z;\bt)=\E_{f_{\Y\mid\Z;\bt}(\cdot\mid \z)}[T(\Y)]$.
+Expanding \eqref{eq:score_expfam} yields
+\begin{equation}
+s(\bt;\y)
+=
+\mathbb{E}_{f_{\Z\mid\Y;\bt}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top T(\y)\big]
+-
+\mathbb{E}_{f_{\Z\mid\Y;\bt}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top \mu(\Z;\bt)\big].
+\label{eq:score_two_terms}
+\end{equation}
+
+Given i.i.d.\ observations $\y_1,\dots,\y_n \sim f_{\Y;\bt_0}$, plugging \eqref{eq:score_two_terms}
+into \eqref{eq:mle_score_eq} shows that the MLE satisfies a matching of two empirical averages:
+\begin{equation}
+\frac{1}{n}\sum_{i=1}^n
+\mathbb{E}_{f_{\Z\mid\Y;\bt}(\cdot\mid \y_i)}\!\big[D(\Z;\bt)^\top T(\y_i)\big]
+\;=\;
+\frac{1}{n}\sum_{i=1}^n
+\mathbb{E}_{f_{\Z\mid\Y;\bt}(\cdot\mid \y_i)}\!\big[D(\Z;\bt)^\top \mu(\Z;\bt)\big].
+\label{eq:mle_matching}
+\end{equation}
+Notice that the left-hand side is anchored by the observed statistic $T(\y_i)$, while the right-hand
+side, hereafter the `target', replaces $T(\y_i)$ with the model-driven conditional expectation $\mu(\Z;\bt)$, and thus depends on the data only through the posterior $f_{\Z\mid\Y}$. Unlike the left-hand side, this quantity is not directly anchored by observed statistics and is therefore sensitive to posterior misspecification. Practical methods replace the generally intractable $f_{\Z\mid\Y;\bt}$ by a surrogate
+$q_{\Z\mid\Y}$ (e.g., amortized variational inference, approximate Bayesian methods, or
+point imputation) and plug $q_{\Z\mid\Y}$ into \eqref{eq:mle_matching}.
+
+Under an approximate posterior, the target becomes uncalibrated and the resulting solutions are generally inconsistent. Recent efforts have tried to improve $q_{\Z\mid\Y}$ so that it matches $f_{\Z\mid\Y;\bt}$ as well as possible, thereby reducing the bias. We propose an alternative strategy which consists in replacing the target itself by a quantity that restores consistency of estimation \textit{despite} an approximated $q_{\Z\mid\Y}$.
+
+\subsection{The $Z_q$ estimator}
+\label{sec:zq_estimator}
+
+Our construction keeps the data-anchored left-hand side of \eqref{eq:mle_matching} with
+$q_{\Z\mid\Y}$ substituting for the intractable $f_{\Z\mid\Y;\bt}$, but replaces the fragile target by a model-driven quantity under $f_{\Y;\bt}$. Define
+\begin{equation}
+\psi_q(\bt;\y)
+:=
+\mathbb{E}_{q_{\Z\mid\Y}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top T(\y)\big]
+\label{eq:psi_q},
+\end{equation}
+%
+and the new matching equation, 
+%
+\begin{equation}
+\frac{1}{n}\sum_{i=1}^n \psi_q(\bt;\y_i)
+=
+\mathbb{E}_{f_{\Y;\bt}}\!\left[\psi_q(\bt;\Y)\right],
+\label{eq:zq_matching}
+\end{equation}
+%
+where the modified target is now the expectation of $\psi_q(\bt;\y)$ under $f_{\Y;\bt}$. Equivalently, defining the sample estimating equation
+%
+\begin{equation}
+\Psi_{n;q}(\bt)
+:=
+\frac{1}{n}\sum_{i=1}^n \psi_q(\bt;\y_i)
+-
+\mathbb{E}_{f_{\Y;\bt}}\!\left[\psi_q(\bt;\Y)\right]
+\label{eq:Psi_nq}
+\end{equation}
+places us in the classical Z-estimation framework, with the population counterpart
+\[
+\Psi_q(\bt)
+:=
+\mathbb E_{f_{\Y;\bt_0}}\!\left[\psi_q(\bt;\Y)\right]
+-
+\mathbb E_{f_{\Y;\bt}}\!\left[\psi_q(\bt;\Y)\right],
+\]
+so that $\Psi_q(\bt_0)=0$ for any choice of $q_{\Z\mid\Y}$. A crucial design choice is the form of $\psi_q$. While one might attempt to center an approximate marginal score directly, the resulting population equation would generally not be locally identifying when $q_{\Z\mid\Y}$ is misspecified.
+By centering instead the data-anchored term arising from the exponential-family split \eqref{eq:score_two_terms}, we obtain estimating equations that remain locally identifying under mild conditions.
+
+We therefore define the estimator
+as follows.
+
+\begin{definition}[$Z_q$ estimator]
+\label{def:Zq}
+The $Z_q$ estimator $\hat\bt_n$ is any solution of $\Psi_{n;q}(\bt)=0$.
+\end{definition}
+
+The Z-estimation formulation brings standard large-sample guarantees under well-understood conditions, including consistency and asymptotic normality, which we develop and interpret in our setting below.
+A key structural advantage is that inference does \emph{not} require differentiating through the surrogate posterior $q_{\Z\mid\Y}$. The procedure treats $q_{\Z\mid\Y}$ as a nuisance object that only needs to provide expectations or samples, thereby allowing black-box, pretrained, or non-differentiable posterior approximations.
+
+Two motivations are central. First, transfer or drift settings in which a surrogate posterior is learned on a large reference dataset and subsequently frozen for use on a new sample from a potentially shifted population. In such cases, the surrogate is necessarily misspecified, but may remain informative. Second, computationally constrained settings, in which only a crude but easily computable surrogate is available (e.g., MAP imputation or a low-capacity encoder).
+
+In both regimes, the proposed centering---implemented via the new target---restores a valid population moment condition and yields consistent estimation, provided the induced population map is locally identifying. In the next section, we derive conditions under which these scenarios lead to consistent and asymptotically normal estimators.
+
+
+
+
+% ==============================================================
+\section{Asymptotic Theory}
+\label{sec:asymptotics}
+
+We now study existence, local identification, and asymptotic properties of the
+$Z_q$ estimator defined in Section~\ref{sec:zq_estimator}.  Throughout, let
+$\bt_0\in\Theta$ denote the true parameter value generating the data.
+
+
+
+TODO: 
+
+- STUDY THE "FROZEN Q" CASE WHICH CAN LET US GO AWAY WITH A VERY CLEAN DOMINATION THEOREM
+\subsection{Population estimating equations}
+
+Recall the sample estimating map
+\[
+\Psi_{n;q}(\bt)
+=
+\frac{1}{n}\sum_{i=1}^n \psi_q(\bt;\y_i)
+-
+\E_{f_{\Y;\bt}}\!\left[\psi_q(\bt;\Y)\right],
+\]
+and define its population counterpart
+\[
+\Psi_q(\bt)
+=
+\E_{f_{\Y;\bt_0}}\!\left[\psi_q(\bt;\Y)\right]
+-
+\E_{f_{\Y;\bt}}\!\left[\psi_q(\bt;\Y)\right].
+\]
+By construction, $\Psi_q(\bt_0)=0$ for any choice of the surrogate posterior
+$q_{\Z\mid\Y}$.
+
+The Jacobian of the population map takes a simple form and is defined as
+\begin{equation}
+A_q(\bt)
+\;:=\;
+-\nabla_\bt \Psi_q(\bt) = -\E_{f_{\Y;\bt_0}}\!\bigl[\psi_q(\bt_0;\Y)s(\bt_0;\Y)^\top\bigr],
+
+
+%Work in progress 19.02
+This matrix plays a central role in identification and asymptotic normality, and is akin to a cross-covariance product on two very similar components, $\psi_q$ and the score $s$ up to the approximation $q$, 
+% end work 19.02
+
+\subsection{Assumptions}
+
+We impose standard regularity conditions for Z-estimation.
+
+\begin{assumption}[Uniform convergence]
+\label{ass:uniform-conv}
+With probability one,
+\[
+\sup_{\bt\in\Theta}
+\bigl\|
+\Psi_{n;q}(\bt)-\Psi_q(\bt)
+\bigr\|
+\;\longrightarrow\;0
+\qquad \text{as } n\to\infty.
+\]
+\end{assumption}
+
+\begin{assumption}[Nonsingularity of the Jacobian]
+\label{ass:nonsingularity}
+Assume that $\Psi_q$ is continuously differentiable in a neighborhood of $\bt_0$
+and that the Jacobian $A_q(\bt_0)$ is nonsingular.
+\end{assumption}
+
+Assumption~\ref{ass:uniform-conv} ensures that the sample estimating equations
+approximate their population counterpart uniformly, while
+
+% WORK IN PROGRESS 19.02
+Assumption~\ref{ass:nonsingularity} guarantees local identification of $\bt_0$. This latter refers to the geometry of our estimator and its alignment to that of the true Problem. Under the oracle $q_Z = f_{\Z|\Y;\bt}$, it would take 
+
+% END WORK IN PROGRESS 19.02
+
+\subsection{Local identification}
+
+\begin{lemma}[Local uniqueness of the population root]
+\label{lem:local-id}
+Under Assumption~\ref{ass:nonsingularity}, there exists a neighborhood
+$U$ of $\bt_0$ such that
+\[
+\{\bt\in U:\ \Psi_q(\bt)=0\}
+=
+\{\bt_0\}.
+\]
+\end{lemma}
+
+\begin{proof}
+By construction, $\Psi_q(\bt_0)=0$.  Under the stated regularity,
+$\Psi_q$ is continuously differentiable near $\bt_0$ and
+$A_q(\bt_0)=-\nabla_\bt\Psi_q(\bt_0)$ is nonsingular.
+The Implicit Function Theorem therefore implies that $\Psi_q$ is locally
+invertible around $\bt_0$, yielding uniqueness of the root in a neighborhood.
+\end{proof}
+
+This result formalizes the fact that, while the estimating equations may admit
+multiple solutions globally, $\bt_0$ is the unique solution locally.
+
+\subsection{Consistency}
+
+\begin{theorem}[Consistency of the $Z_q$ estimator]
+\label{thm:consistency}
+Suppose Assumptions~\ref{ass:uniform-conv} and~\ref{ass:nonsingularity} hold.
+Then there exists a sequence of solutions $\hat\bt_n$ to
+$\Psi_{n;q}(\bt)=0$ such that
+\[
+\hat\bt_n \xrightarrow{p} \bt_0.
+\]
+\end{theorem}
+
+\begin{proof}
+By Assumption~\ref{ass:uniform-conv}, $\Psi_{n;q}$ converges uniformly to $\Psi_q$.
+Lemma~\ref{lem:local-id} implies that $\Psi_q$ has a unique root in a neighborhood
+of $\bt_0$.  Standard Z-estimation arguments (e.g., \citealp{vandervaart1998},
+Theorem~5.9) then guarantee the existence of a consistent sequence of roots.
+\end{proof}
+
+\subsection{Asymptotic normality}
+
+Define the asymptotic covariance components
+\[
+B_q(\bt_0)
+=
+\Var_{f_{\Y;\bt_0}}\!\bigl(\psi_q(\bt_0;\Y)\bigr),
+\qquad
+A_q(\bt_0)
+=
+-\E_{f_{\Y;\bt_0}}\!\bigl[\psi_q(\bt_0;\Y)s(\bt_0;\Y)^\top\bigr],
+\]
+where $s(\bt;\Y)$ denotes the score of the marginal likelihood.
+
+\begin{theorem}[Asymptotic normality]
+\label{thm:asymptotic-normality}
+Under the conditions of Theorem~\ref{thm:consistency},
+\[
+\sqrt{n}\,(\hat\bt_n-\bt_0)
+\;\Longrightarrow\;
+\mathcal N\!\bigl(0,\;\Sigma_q\bigr),
+\qquad
+\Sigma_q
+=
+A_q(\bt_0)^{-1}\,B_q(\bt_0)\,A_q(\bt_0)^{-\top}.
+\]
+\end{theorem}
+
+\begin{proof}
+The result follows from standard Z-estimation theory
+(\citealp{vandervaart1998}, Theorem~5.41).  The influence function of
+$\hat\bt_n$ is $A_q(\bt_0)^{-1}\psi_q(\bt_0;\Y)$, yielding the stated sandwich
+covariance.
+\end{proof}
+
+\subsection{Efficiency considerations}
+
+When $q_{\Z\mid\Y}=f_{\Z\mid\Y;\bt_0}$, the estimating function coincides with the
+likelihood score and $\Sigma_q$ reduces to the inverse Fisher information.
+For misspecified $q$, the estimator remains consistent but generally inefficient.
+This formalizes the robustness--efficiency trade-off highlighted in
+Section~\ref{sec:zq_estimator} and examined empirically in
+Section~\ref{sec:results}.
+
+
+\subsection{Sufficient conditions for Jacobian nonsingularity}
+\label{sec:jacobian-condition}
+
+Assumption~\ref{ass:nonsingularity} requires the Jacobian
+$A_q(\bt_0)=-\nabla_\bt\Psi_q(\bt_0)$ to be nonsingular.  We now provide
+interpretable sufficient conditions under which this holds, by comparing
+$A_q(\bt_0)$ to the Fisher information of the correctly specified model.
+
+Recall that
+\[
+A_q(\bt_0)
+=
+-\E_{f_{\Y;\bt_0}}\!\bigl[\psi_q(\bt_0;\Y)\,s(\bt_0;\Y)^\top\bigr],
+\]
+where $s(\bt;\Y)$ denotes the score of the marginal likelihood.
+Add and subtract $s(\bt_0;\Y)$ inside the expectation to obtain
+\[
+A_q(\bt_0)
+=
+-\E\!\bigl[s(\bt_0;\Y)s(\bt_0;\Y)^\top\bigr]
+-
+\E\!\bigl[(\psi_q(\bt_0;\Y)-s(\bt_0;\Y))\,s(\bt_0;\Y)^\top\bigr].
+\]
+Hence,
+\begin{equation}
+A_q(\bt_0)
+=
+-\mathcal I(\bt_0)
+-
+M_q(\bt_0),
+\label{eq:jacobian-decomposition}
+\end{equation}
+where $\mathcal I(\bt_0)$ is the Fisher information matrix and
+\[
+M_q(\bt_0)
+:=
+\E\!\bigl[(\psi_q(\bt_0;\Y)-s(\bt_0;\Y))\,s(\bt_0;\Y)^\top\bigr].
+\]
+
+Equation~\eqref{eq:jacobian-decomposition} shows that the Jacobian of the
+$Z_q$ estimating equations is a perturbation of the negative Fisher
+information, with perturbation term $M_q(\bt_0)$ measuring the discrepancy
+between the estimating function and the true score.
+
+\begin{assumption}[Controlled deviation from the score]
+\label{ass:jacobian-perturbation}
+Assume that the Fisher information $\mathcal I(\bt_0)$ exists and is
+nonsingular, and that
+\[
+\bigl\|
+\mathcal I(\bt_0)^{-1/2}\,
+M_q(\bt_0)\,
+\mathcal I(\bt_0)^{-1/2}
+\bigr\|_{\mathrm{op}}
+< 1.
+\]
+\end{assumption}
+
+\begin{lemma}[Invertibility via Neumann series]
+\label{lem:jacobian-neumann}
+Under Assumption~\ref{ass:jacobian-perturbation}, the Jacobian
+$A_q(\bt_0)$ is nonsingular.
+\end{lemma}
+
+\begin{proof}
+Let
+$\widetilde M_q
+=
+\mathcal I(\bt_0)^{-1/2}
+M_q(\bt_0)
+\mathcal I(\bt_0)^{-1/2}$.
+Then
+\[
+A_q(\bt_0)
+=
+-\mathcal I(\bt_0)^{1/2}
+\bigl(I+\widetilde M_q\bigr)
+\mathcal I(\bt_0)^{1/2}.
+\]
+By Assumption~\ref{ass:jacobian-perturbation},
+$\|\widetilde M_q\|_{\mathrm{op}}<1$, so
+$(I+\widetilde M_q)$ is invertible by the Neumann series.
+The result follows.
+\end{proof}
+
+This result formalizes the intuition underlying the $Z_q$ construction:
+when the estimating function $\psi_q$ is close to the likelihood score,
+the Jacobian remains close to the Fisher information and hence invertible.
+In particular, exact posterior inference ($q=f$) yields
+$M_q(\bt_0)=0$ and recovers the classical likelihood theory, while moderate
+posterior misspecification preserves local identifiability.
+
+\subsection{Variance estimation and inference}
+\label{sec:variance}
+
+The asymptotic normality result of Theorem~\ref{thm:asymptotic-normality} provides a
+basis for statistical inference on $\bt_0$.  In particular,
+\[
+\sqrt{n}\,(\hat\bt_n-\bt_0)
+\;\Longrightarrow\;
+\mathcal N\!\bigl(0,\;\Sigma_q\bigr),
+\qquad
+\Sigma_q
+=
+A_q(\bt_0)^{-1}\,B_q(\bt_0)\,A_q(\bt_0)^{-\top}.
+\]
+To construct confidence intervals or Wald-type tests, it therefore suffices to
+obtain a consistent estimator of the asymptotic covariance matrix $\Sigma_q$.
+
+A direct plug-in approach is generally infeasible in latent-variable models,
+since the score function $s(\bt;Y)$ is unavailable and the Jacobian
+$A_q(\bt_0)$ involves expectations with respect to the unknown data-generating
+distribution.  Moreover, we deliberately avoid differentiating through the
+surrogate posterior $q_{\!Z\mid Y}$.  We therefore rely on resampling-based
+procedures that exploit the Z-estimation structure of the problem.
+
+\paragraph{Freezing the surrogate posterior.}
+A key observation is that the asymptotic covariance depends on $q_{\!Z\mid Y}$
+only through its value at the true parameter $\bt_0$.  Consequently, any estimator
+that uses the same estimating function $\psi_q(\bt;\cdot)$ evaluated with $q$
+frozen at $\bt_0$ shares the same first-order asymptotic distribution as
+$\hat\bt_n$.
+
+In practice, $\bt_0$ is unknown and we replace it by the Zq estimator $\hat\bt_n$.
+We therefore define the \emph{frozen-q estimating equations}
+\[
+\Psi^{\mathrm{fr}}_{n;q}(\bt)
+=
+\frac{1}{n}\sum_{i=1}^n
+\psi_{\widehat q}(\bt;\y_i)
+-
+\E_{f_{\Y;\bt}}\!\left[\psi_{\widehat q}(\bt;\Y)\right],
+\qquad
+\widehat q(\cdot\mid y):=q_{\Z\mid\Y}(\cdot\mid y;\hat\bt_n),
+\]
+and denote by $\hat\bt_n^{\,\mathrm{fr}}$ any solution of
+$\Psi^{\mathrm{fr}}_{n;q}(\bt)=0$.
+Standard arguments for Z-estimators imply that
+$\hat\bt_n^{\,\mathrm{fr}}-\hat\bt_n=o_p(n^{-1/2})$, so both estimators have the
+same asymptotic covariance.
+
+This observation allows variance estimation to proceed without re-training the
+encoder or differentiating through $q$.
+
+\paragraph{Parametric bootstrap.}
+A simple and robust approach is a parametric bootstrap based on the frozen-q
+estimating equations.
+
+\begin{enumerate}
+\item Simulate bootstrap samples
+$\{\Y^{*(b)}_i\}_{i=1}^n$, $b=1,\dots,B$, independently from the fitted model
+$f_{\Y;\hat\bt_n}$.
+\item For each bootstrap sample, solve
+\[
+\Psi^{\mathrm{fr},*(b)}_{n;q}(\bt)=0
+\]
+to obtain $\hat\bt^{*(b)}$.
+\item Estimate the covariance by
+\[
+\widehat\Sigma_{\mathrm{boot}}
+=
+\frac{1}{B-1}\sum_{b=1}^B
+\bigl(\hat\bt^{*(b)}-\bar\bt^*\bigr)
+\bigl(\hat\bt^{*(b)}-\bar\bt^*\bigr)^\top,
+\qquad
+\bar\bt^*=\frac{1}{B}\sum_{b=1}^B\hat\bt^{*(b)}.
+\]
+\end{enumerate}
+
+Because the estimating equations are unbiased and the surrogate posterior is held
+fixed, this procedure consistently estimates $\Sigma_q$ under the conditions of
+Theorem~\ref{thm:asymptotic-normality}.  Importantly, each bootstrap replication
+involves solving the same centered estimating equations as the original estimator,
+with no gradient propagation through the encoder.
+
+\paragraph{Remarks.}
+\begin{itemize}
+\item The bootstrap may be implemented either parametrically, as above, or
+nonparametrically by resampling observations $\y_i$.  In latent-variable settings,
+the parametric version is often more stable.
+\item The procedure is computationally light: encoder training is performed only
+once, and variance estimation requires only repeated decoder updates.
+\item The resulting confidence intervals reflect uncertainty in the decoder
+parameters under posterior approximation, but do not confer robustness to
+outliers or misspecification of the data-generating model.
+\end{itemize}
+
+
+
+%
+% SIMULATION
+%
+\section{Simulation study}
+\label{sec:sims}
+
+
+Our approach decouples decoder estimation from posterior accuracy by treating the surrogate posterior 
+as a nuisance object within a centered Z-estimation framework. Rather than requiring the surrogate
+to approximate the true posterior, we only require that the resulting estimating equations remain locally identifying. This allows decoder parameters to be estimated consistently using extremely crude inference schemes, including deterministic solvers such as MAP imputation or encoders trained under misspecified models.
+
+We emphasize two practically relevant regimes. First, in parametric latent variable models where posterior inference is computationally prohibitive—such as high-dimensional or longitudinal GLLVMs—we show that decoder consistency can be recovered by plugging in a fixed, possibly wrong, latent estimator and centering the estimating equations appropriately. This enables scalable estimation in settings where likelihood-based or variational methods are infeasible.
+
+Second, we consider transfer and distribution-shift scenarios in which an encoder is pretrained on a large reference dataset and subsequently frozen. While standard ELBO-based updates yield biased decoder estimates under such encoder reuse, the proposed $Z_q$ estimator remains consistent by construction, provided a mild Jacobian condition holds.
+
+Finally, we include a small neural-network illustration on handwritten digits to demonstrate that the same principles apply in amortized inference settings, without making neural architectures the focus of the paper.
+
+
+We evaluate the proposed $Z_q$ estimator in controlled settings where the data-generating process is fully known.  The simulation design targets the two central claims of the paper: (i) \emph{decoder consistency} under arbitrary surrogate posteriors $q_{\Z\mid\Y}$ (including severely misspecified, pretrained, or underspecified encoders), and (ii) a \emph{robustness--efficiency trade-off}, where poorer surrogates increase variance but do not induce asymptotic bias, provided the Jacobian condition holds.
+
+Across all experiments, we generate i.i.d.\ samples $\{\Y_i\}_{i=1}^n$ from a latent-variable model with true decoder parameter $\bt_0$.  We then fit the model using two learning rules:
+(i) a baseline variational approach that updates $\bt$ by maximizing an ELBO built from a surrogate posterior $q_{\Z\mid\Y}$ (amortized or otherwise), and
+(ii) the proposed $Z_q$ procedure that updates $\bt$ by solving the centered estimating equations $\Psi_{n;q}(\bt)=0$ using the same surrogate $q_{\Z\mid\Y}$.
+
+To isolate the effect of posterior misspecification, we separate \emph{inference} (how $q_{\Z\mid\Y}$ is obtained) from \emph{estimation} (how $\bt$ is updated).  In particular, several experiments deliberately fix or degrade $q_{\Z\mid\Y}$ while keeping the data-generating model correctly specified.
+
+\paragraph{Common protocol.}
+Each experiment follows the same steps:
+\begin{enumerate}
+\item \textbf{Data generation.} Choose $(f_\Z, f_{\Y\mid\Z;\bt_0})$ and simulate $\Z_i \sim f_\Z$ and $\Y_i\mid\Z_i \sim f_{\Y\mid\Z;\bt_0}$ for $i=1,\dots,n$.
+\item \textbf{Surrogate posterior construction.} Construct a surrogate $q_{\Z\mid\Y}$ (amortized encoder, frozen encoder, point imputation, Laplace/MAP, or a deliberately wrong model), possibly trained on a different dataset or under a misspecified model.
+\item \textbf{Decoder estimation.} Fit $\bt$ using (a) ELBO-based learning with $q_{\Z\mid\Y}$ and (b) $Z_q$ learning with the \emph{same} $q_{\Z\mid\Y}$.
+\item \textbf{Repetition and metrics.} Repeat over $R$ Monte Carlo replications and report decoder error, bias/variance behavior, and (when relevant) coverage using the variance estimation procedure of Section~\ref{sec:variance}.
+\end{enumerate}
+
+\paragraph{Metrics.}
+Let $\hat\bt$ denote an estimator of $\bt_0$.  We report (i) a parameter error such as $\|\hat\bt-\bt_0\|$ (or blockwise relative error for loading matrices), (ii) empirical bias and variance over replications, and (iii) when applicable, Wald-type coverage based on an estimated covariance matrix.
+
+
+\subsection{Experiment A: wrong-model MAP imputation}
+\label{sec:simA}
+
+We first consider a setting where the surrogate posterior is obtained by point imputation under a \emph{misspecified} model.  This mimics practical workflows where latent variables are approximated by a fast imputer or by a legacy inference pipeline that does not match the current generative specification.
+
+\paragraph{Steps.}
+\begin{enumerate}
+\item \textbf{Generate data.} Fix a GLLVM with latent dimension $q$ and mixed outcomes (Gaussian/Poisson/Bernoulli) and draw $\Z_i \sim f_\Z$, $\Y_i\mid \Z_i \sim f_{\Y\mid\Z;\bt_0}$.
+\item \textbf{Build a wrong imputer.} Specify an \emph{incorrect} latent model $\tilde f_{\Y,\Z;\tilde\bt}$ (e.g., wrong link functions, wrong variance structure, wrong prior, or wrong $q$). Fit $\tilde\bt$ by a crude method (or fix it).
+\item \textbf{Define $q_{\Z\mid\Y}$.} For each $\Y_i$, compute a MAP estimate $\tilde z_i = \arg\max_z \tilde f_{\Z\mid\Y;\tilde\bt}(z\mid \Y_i)$ and set $q_{\Z\mid\Y}(\cdot\mid \Y_i)=\delta_{\tilde z_i}(\cdot)$.
+\item \textbf{Estimate $\bt$.} Using this degenerate surrogate $q_{\Z\mid\Y}$, fit $\bt$ by (a) ELBO/variational learning (using $\delta_{\tilde z_i}$) and (b) $Z_q$ estimation.
+\item \textbf{Evaluate.} Compare $\hat\bt$ to $\bt_0$ over replications and sample sizes.
+\end{enumerate}
+
+
+\subsection{Experiment B: encoder underspecification sweep}
+\label{sec:simB}
+
+We next isolate the impact of amortized posterior quality by fitting a correctly specified GLLVM while systematically reducing encoder capacity.  This experiment targets amortization/underspecification bias: restricted encoder families yield biased decoder gradients under ELBO training, and this bias typically persists as $n$ grows.
+
+\paragraph{Steps.}
+\begin{enumerate}
+\item \textbf{Generate data.} Simulate $\Z_i$ and $\Y_i$ from the same GLLVM as in Experiment~\ref{sec:simA}, with true parameter $\bt_0$.
+\item \textbf{Train encoder family.} For a grid of capacities $h\in\mathcal H$ (e.g.\ hidden width or bottleneck size), train an amortized encoder $q_{\phi_h}(\Z\mid\Y)$ within a fixed variational family (e.g.\ diagonal Gaussian).
+\item \textbf{Fit $\bt$ with shared $q$.} For each $h$, estimate $\bt$ by:
+(a) standard VAE/ELBO optimization using $q_{\phi_h}$, and
+(b) $Z_q$ updates using the same $q_{\phi_h}$.
+\item \textbf{Evaluate bias/variance.} For each $h$, report parameter error and decompose the empirical behavior into bias (drift of the mean) and variance (spread across replications).
+\end{enumerate}
+
+
+
+\subsection{Experiment C: frozen encoder under decoder shift}
+\label{sec:simC}
+
+We then study encoder reuse under distribution shift.  An encoder is trained on a source model and then frozen.  On a target dataset generated from a different decoder parameter, we re-estimate only $\bt$.  This directly tests whether decoder learning remains valid when $q_{\Z\mid\Y}$ is mismatched to the target population.
+
+\paragraph{Steps.}
+\begin{enumerate}
+\item \textbf{Source training.} Generate a source dataset from $(f_\Z, f_{\Y\mid\Z;\bt_{\mathrm{src}}})$ and train an amortized encoder $q_{\phi}(\Z\mid\Y)$ (e.g.\ by ELBO).
+\item \textbf{Freeze $q$.} Fix $\phi$ and treat $q_{\Z\mid\Y}=q_{\phi}$ as a black box.
+\item \textbf{Target generation.} Generate a target dataset from the same model class but with $\bt_0=\bt_{\mathrm{tgt}}\neq \bt_{\mathrm{src}}$.
+\item \textbf{Re-estimate $\bt$.} On the target dataset, estimate $\bt$ using (a) ELBO learning with frozen $q_{\phi}$ and (b) $Z_q$ with the same frozen $q_{\phi}$.
+\item \textbf{Evaluate.} Compare decoder recovery across the shift magnitude $\|\bt_{\mathrm{tgt}}-\bt_{\mathrm{src}}\|$ and sample size $n$.
+\end{enumerate}
+
+\subsection{Experiment D: MNIST encoder reuse (digits 0--8 $\to$ 9)}
+\label{sec:simD}
+
+Finally, we consider a high-dimensional benchmark where encoder reuse is natural.  We train an encoder on digits $0$--$8$ and freeze it.  We then fit a decoder on digit $9$ only, comparing standard VAE learning to $Z_q$.  This setting tests whether decoder learning remains well-behaved when inference is transferred from a related but non-identical population.
+
+\paragraph{Steps.}
+\begin{enumerate}
+\item \textbf{Train on digits 0--8.} Fit a VAE on MNIST restricted to labels $\{0,\dots,8\}$, obtaining an encoder $q_{\phi}(\Z\mid\Y)$.
+\item \textbf{Freeze encoder.} Keep $\phi$ fixed and discard (or reinitialize) the decoder.
+\item \textbf{Fit on digit 9.} Using only digit $9$ images, estimate decoder parameters $\bt$ via (a) ELBO learning with frozen $q_{\phi}$ and (b) $Z_q$ updates with the same frozen $q_{\phi}$.
+\item \textbf{Evaluate generative quality.} Compare samples from the fitted decoders and quantitative metrics (e.g.\ reconstruction on held-out 9s, likelihood proxies, or classifier-based scores).
+\end{enumerate}
+
+
+
+
+
+
+\section{Results}
+\label{sec:results}
+
+We evaluate the proposed $Z_q$ estimator from both a theoretical and empirical
+perspective.  Our results highlight three main findings:  
+(i) the centered estimating equations restore consistency under severe posterior
+misspecification;  
+(ii) this robustness comes with a controlled loss of efficiency that matches the
+theoretical trade-off characterized in Section~\ref{sec:zq_estimator};  
+(iii) in practical settings with amortized or reused encoders, $Z_q$ yields stable
+decoder estimates in regimes where standard variational methods fail.
+
+
+\subsection{Theoretical implications}
+
+The asymptotic results of Section~\ref{sec:zq_estimator} imply that decoder
+consistency does not rely on the correctness of the approximate posterior
+$q_{\!Z\mid Y}$, but only on a local nonsingularity condition of the population
+Jacobian.  In particular, Theorem~\ref{thm:Zq-asymptotics} shows that for any
+surrogate $q$ satisfying Assumption~\ref{ass:jacobian-nonsigular}, solutions of the
+centered estimating equations converge to the true parameter $\bt_0$ and are
+asymptotically normal.
+
+A direct consequence is that posterior misspecification affects only the
+\emph{efficiency} of the estimator, not its consistency.  When $q$ coincides with
+the true posterior, the $Z_q$ estimator recovers the maximum likelihood estimator
+and achieves Fisher efficiency.  As $q$ departs from the true posterior, the
+asymptotic variance increases, in agreement with the sandwich form of
+Theorem~\ref{thm:Zq-asymptotics}.  This behavior formalizes the intuition that
+approximate inference quality controls efficiency but not correctness.
+
+The sufficient conditions of Section~\ref{sec:zq_estimator} further clarify the
+robustness regime.  The Neumann-series argument shows that even substantial
+approximation errors are admissible, provided they do not overwhelm the Fisher
+information.  This condition is mild in practice and explains why $Z_q$ remains
+stable under crude or underspecified encoders.
+
+\subsection{Synthetic experiments: GLLVMs}
+
+We first study generalized linear latent variable models (GLLVMs) for which the
+true data-generating process is known.  Latent variables are Gaussian and
+observations include mixed Poisson, Binomial, and Gaussian responses.  This setting
+allows us to isolate the effect of posterior misspecification while keeping the
+decoder correctly specified.
+
+We consider a sequence of increasingly misspecified encoders, ranging from
+high-capacity amortized networks to extreme point-imputation schemes.  For each
+encoder, we compare standard variational inference (joint ELBO optimization) with
+decoder updates based on the $Z_q$ estimating equations.
+
+Across all settings, variational inference exhibits growing bias as encoder
+capacity decreases: decoder parameter estimates drift away from the truth even as
+the sample size increases.  In contrast, the $Z_q$ estimator remains centered around
+$\bt_0$ for all encoder qualities.  While the variance of the estimates increases
+with posterior misspecification, no systematic bias is observed.  These findings
+are consistent with the theoretical predictions and illustrate the robustness of
+the centered estimating equations.
+
+\subsection{Amortized inference under encoder reuse}
+
+We next consider a transfer-learning scenario in which an encoder trained on a
+source dataset is reused without retraining on a target dataset.  Such settings
+are common in applications where inference is expensive or data are scarce.
+
+We train an encoder on simulated data generated from a reference model and then
+freeze it.  On new datasets with different decoder parameters, we estimate the
+decoder using either the frozen encoder with standard ELBO gradients or with the
+$Z_q$ updates.  Despite the encoder being mismatched to the target distribution,
+the $Z_q$ estimator consistently recovers the correct decoder parameters, whereas
+ELBO-based updates exhibit persistent bias.
+
+These results confirm that $Z_q$ decouples encoder quality from decoder
+consistency, enabling safe reuse of pretrained or externally provided inference
+modules.
+
+\subsection{Efficiency--robustness trade-off}
+
+Finally, we empirically examine the efficiency trade-off implied by the theory.
+When the approximate posterior is accurate, the variance of the $Z_q$ estimator is
+close to that of the maximum likelihood estimator.  As the posterior approximation
+deteriorates, variance increases smoothly, reflecting the degradation of the
+Jacobian condition.  Importantly, no abrupt instability is observed: even severely
+misspecified posteriors yield well-behaved estimating equations.
+
+Taken together, these results demonstrate that the proposed $Z_q$ estimator
+achieves reliable decoder estimation across a wide range of inference regimes,
+including settings in which standard variational approaches are known to fail.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+
+\section{THE FOLLOWING IS OLD ---- USED AS REFERENCE, NOT IN PAPER}
+% ====================
+% OLD OLD OL DOLD OLD OLD
+% =======================
+
+
+
+
+
+
+\section{Advantages}
+
+
+\begin{enumerate}
+\item **Reusability of encoders across projects.**  
+Because the estimator treats \( q \) as a black box, a trained encoder can be reused on new datasets or related models without retraining.  
+For instance, a generic variational encoder learned on large-scale data can provide amortized posterior surrogates for smaller or domain-specific problems, while the Zq correction ensures unbiased estimation downstream.
+
+\item **Theoretical guarantees despite approximate inference.**  
+The method restores unbiased estimating equations and inherits the asymptotic properties of classical Z-estimators: consistency and asymptotic normality.  
+This contrasts with standard variational or amortized estimators, which are asymptotically biased even under large samples.
+
+\item **Model-agnostic design.**  
+The Zq estimator only requires sample access to \( q_{\!Z|Y} \) and evaluation of expectations over \( f_{\!Y|Z;\theta} \); it does not rely on model-specific conjugacy or differentiability conditions.  
+It applies uniformly to exponential-family models, VAEs, GLLVMs, or any latent-variable framework expressible through sampling and sufficient statistics.
+
+\item **Robustness–efficiency trade-off via continuation factor \( c \).**  
+The continuation parameter provides an explicit knob between robustness to posterior misspecification (\( c \downarrow 0 \)) and asymptotic efficiency (\( c \uparrow 1 \)).  
+This makes it possible to systematically control the impact of approximation error, a property absent from most approximate-inference methods.
+
+\item **Compatibility with modern deep-learning tooling.**  
+The estimator integrates naturally with PyTorch or JAX frameworks. Encoders can be neural networks, and updates to \( \theta \) use standard stochastic-gradient optimizers.  
+It bridges classical asymptotic theory with practical gradient-based optimization.
+
+\item **Unbiasedness without reparameterization.**  
+Because expectations are taken directly with respect to samples from \( q \), no reparameterization trick is required.  
+This enables the use of discrete or otherwise non-reparameterizable latent variables, broadening applicability.
+
+\item **Empirical stability.**  
+Centering by subtracting the model-based expectation stabilizes gradient estimates and prevents drift caused by encoder bias.  
+In practice this leads to smoother optimization and reduced variance in parameter updates.
+
+\item **Ease of modular experimentation.**  
+The plug-and-play structure encourages modular design: the encoder, decoder, and estimator can each be swapped independently.  
+This supports rapid experimentation and reproducibility across models and datasets.
+
+\end{enumerate}
+
+\newpage
+
+\section{Introduction}
+
+Latent variable models are commonly used to capture complex dependencies in multivariate data. 
+Generating a data point $\Y \in \mathcal Y \subseteq \mathbb R^p$ from a latent variable model involves two steps: 
+(1) a latent (unobserved) variable $\Z \in \mathcal Z \subseteq \mathbb R^q$ is generated from a known prior distribution $f_\Z(\cdot)$; 
+(2) given $\Z$, the random variable $\Y \mid \Z$ is generated from some conditional distribution $f_{\Y \mid \Z;\,\bt}(\cdot \mid \Z)$, known up to the parameters $\bt \in \bm\Theta \subseteq \mathbb R^r$. 
+Thus, the latent variable model is a \textit{generative model} $f_{\Y, \Z;\,\bt}(\cdot, \cdot)$ for the pair $(\Y, \Z)$:
+%
+\begin{align}
+    \Z &\sim f_\Z(\cdot), \\
+    \Y \mid \Z &\sim f_{\Y \mid \Z;\,\bt}(\cdot \mid \Z),
+    \label{eqn:generative-model-general}
+\end{align}
+%
+where $\Z$ is unobserved.
+%
+The marginal density $f_{\Y;\,\bt}(\cdot)$ of $\Y$, governing the observed quantities, is then obtained by integrating out the latent variable:
+%
+\begin{equation}
+    f_{\Y;\,\bt}(\cdot) 
+    = \int_{\mathcal Z} f_{\Y, \Z;\,\bt}(\cdot, \z)\, d\z 
+    = \int_{\mathcal Z} f_{\Y \mid \Z;\,\bt}(\cdot \mid \z)\, f_\Z(\z)\, d\z.
+\end{equation}
+
+Latent variable models are elegant tools for multivariate data analysis, are easy to set up, and are surprisingly general. Identifiability usually requires that the dimension of the latent variable space, $q$, be smaller than that of the feature space, $p$. Far from being a drawback, this constraint enables dimensionality reduction, where a small number of latent variables capture the most salient features of the data. As such, they have been used extensively in deep learning, etc...\todo{Improve text, add references. Low prio.} In the social and biological sciences, they are a key tool to estimate a theorized latent construct ($\Z$) from a set of observable features ($\Y|\Z$) that it is assumed to affect. In longitudinal settings, where many observations of the same unit are gathered over time, a latent variable known as random effect can be used to model the correlation between observations on the same unit.
+
+
+
+
+% we don't need to talk (much) about the marginal likelihood, since the method only relies on the extended likelihood.
+% I would just talk about $f_\bt(y)$, which is intractable due to the integral.
+Given a sample of $n$ data pairs $\{(\y_i, \z_i)\}_{i=1}^n$, each drawn independently from $f_{\Y,\Z;\,\bt}(\cdot,\cdot)$, where the latent variables $\{\z_i\}_{i=1}^n$ are unobserved, an estimate of the parameter $\bt_0$ can, in principle, be obtained by maximizing the sample \textit{marginal log-likelihood} $\sum_{i=1}^n \log f_{\Y;\,\bt}(\y_i)$. Under some regularity conditions, the solution, the \emph{maximum likelihood estimator}, is unique and can be obtained as the root of the following set of estimating equations,
+
+\begin{equation}
+\sum_{i=1}^n s(\bt;\y_i) = 0,
+\label{eqn:MLE-estimating-equations}
+\end{equation}
+%
+where $s(\bt; \y_i) \vcentcolon = \nabla_\bt \log f_{\Y;\,\bt}(\y_i)$ is the \emph{score function}. In latent variable models $f_{\Y,\Z;\,\bt}(\cdot, \cdot)$, the score admits an interesting, equivalent definition\footnote{The derivation of this form of the score is available in the appendix (TODO: now it is in the box)}:
+\begin{equation}
+    s(\bt; \y_i) \vcentcolon = \mathbb{E}_{f_{\Z \mid \Y;\,\bt}(\cdot\mid \y_i)}
+\!\left[ \nabla_\bt \log f_\bt(\y_i, \Z)\right],
+\label{eqn:score}
+\end{equation}
+\noindent
+where the expectation, for each $i$, is taken with respect to the posterior density $f_{\Z|\Y;\,\bt}(\cdot\mid\y_i)$\footnote{All expectations are taken with respect to the appropriate measure (counting or Lebesgue).}.
+\bp{TODO: add similar remark for densities?}
+
+\begin{remark}[The score in latent variable models]
+The score function is the expectation, taken with respect to the posterior distribution $f_{\Z\mid\Y;\,\bt}(\cdot\mid\y_i)$, of the derivative of the log-likelihood of the joint distribution. Not knowing the true value of the $\z_i$, this latter alone is not useful: the principled approach is to average out over the most likely value of $\z_i$, given $\y_i$, given by the posterior distribution.
+\end{remark}
+
+
+
+While the expectation in \eqref{eqn:MLE-estimating-equations} can be computed exactly for some simple models, it is generally intractable in high-dimensional or non-linear settings due to the complexity of the posterior distribution $f_{\Z\mid\Y;\,\bt}(\cdot \mid \y_i)$. In practice, one therefore relies on approximate inference methods.  
+
+A common strategy is \emph{amortized inference}, which constructs an approximate posterior directly from the data, avoiding case-by-case optimization and enabling scalability to large datasets. The drawback is that restricted approximation families typically yield biased expectations, and this bias propagates to parameter estimates. Known as \emph{amortization bias}, it persists even with large samples.  
+
+These limitations motivate estimation strategies that preserve the computational advantages of amortized inference while mitigating the bias it induces. In this work, we introduce such a strategy, based on the classical framework of Z-estimation \citep{vandervaart1998}, which combines scalability with the statistical guarantees of likelihood-based methods.  
+
+
+In other words, we propose a method that :
+\begin{enumerate}
+    \item \textbf{Remains consistent} for the parameters of interest under mild assumptions, even when the approximate posterior is misspecified.
+    \item \textbf{Minimizes bias propagation} from the approximate posterior to the final parameter estimates, while preserving computational feasibility.
+    \item In implementation: \textbf{Uses amortized inference} to efficiently produce approximate posteriors for large datasets.
+\end{enumerate}
+
+The next section develops our framework, based on Z-estimation, by reformulating the estimating equations in a way that corrects for the systematic bias introduced by approximate posteriors, while keeping their computational advantages intact.
+
+
+{\color{orange}
+
+\paragraph{No need to differentiate through the encoder.}
+A key feature of the ZQ estimating equations is that decoder updates never 
+differentiate through the encoder.  Only samples from the approximate posterior 
+$q_{Z\mid Y}$ are needed, which means the encoder can be arbitrary 
+(non-differentiable algorithms, Laplace approximations, MAP imputations, 
+pretrained networks, or black-box procedures).  This greatly enlarges the 
+design space compared to variational inference, which requires smooth and 
+reparameterizable encoders.  Importantly, the encoder affects the 
+\emph{Jacobian} of the population estimating equation---and therefore the 
+local identifiability and efficiency of the ZQ estimator---but it does not 
+enter the gradient computation.  In practice this means that while $q$ must be 
+accurate enough to keep the Jacobian nonsingular, we are free to train or 
+specify the encoder by any convenient method (ELBO, regression on synthetic 
+pairs, amortized neural networks, or external inference tools) without 
+modifying the decoder objective.  This separation of roles provides substantial 
+practical flexibility while preserving correct asymptotics.
+
+
+
+\paragraph{No need to differentiate through the encoder}
+A key feature of our framework is that the decoder updates never require gradients
+to flow through the encoder or the approximate posterior $q_{\!Z\mid Y}$.  
+The encoder is treated as a nuisance component: it supplies latent samples, but its
+internal parameters and density do not enter any derivative needed for estimating
+$\theta$.  
+
+This has several important consequences.  
+\emph{First}, the encoder may be trained by any convenient method (e.g.~ELBO,
+Laplace, MAP imputation, regression on synthetic data), without affecting the
+validity of the ZQ estimator.  
+\emph{Second}, one may generate unlimited synthetic $(Y,Z)$ pairs and fit or
+warm-start an encoder purely from model simulations, independent of the observed
+dataset.  
+\emph{Third}, the encoder can be reused across models or borrowed from external
+sources—only its ability to provide reasonable posterior surrogates matters, not
+how it was obtained.  
+
+In short, because no derivative ever passes through $q$, the encoder is
+completely modular: it may be trained, replaced, frozen, or synthesized without
+changing the statistical properties of the ZQ updates.
+
+\paragraph{Additional advantages of avoiding encoder differentiation.}
+Beyond conceptual simplicity, the absence of encoder derivatives confers a
+series of practical and methodological benefits.  The encoder may be
+arbitrarily expressive, nondifferentiable, or even external to the model,
+since the ZQ objective only requires samples from $q_{Z\mid Y}$.  This
+decouples inference from learning and eliminates the delicate joint
+optimization typical of VAEs.  Encoders may be trained by ELBO,
+regression on synthetic $(Y,Z)$ pairs, MAP approximation, Laplace
+methods, or borrowed from pre-trained models.  Misspecification of
+$q_{Z\mid Y}$ affects only efficiency—not consistency—and discrete or
+degenerate latent distributions are handled without difficulty.  The
+resulting flexibility enables plug-and-play inference modules, stable
+decoder training, and the reusability of encoders across datasets and
+research projects.
+
+
+\paragraph{Robustness to encoder misspecification.}
+To illustrate the robustness of the ZQ estimator with respect 
+to the choice of approximate posterior, we consider a simple 
+GLLVM with mixed Poisson, Binomial, and Gaussian responses.  
+We train a family of encoder networks whose hidden dimension 
+is gradually reduced (128, 64, 32, 16, 8, 4, 2, 1), producing a 
+sequence of increasingly misspecified posterior approximations 
+$q_{Z\mid Y}$.  For each encoder size we compare standard 
+variational inference (jointly optimizing the ELBO) with ZQE, 
+which trains the encoder by ELBO but updates the decoder using 
+centered Z–estimating equations.
+
+Variational inference performs well when the encoder has 
+sufficient capacity, but rapidly deteriorates as the hidden 
+dimension decreases: amortization bias increases, the ELBO 
+gradients become systematically biased, and the decoder parameter 
+estimates drift substantially even though the generative model is 
+correct.  In contrast, ZQE remains stable across the entire range 
+of encoder sizes.  While a poorer encoder reduces efficiency 
+(leading to larger variance), the centered estimating equations 
+remain unbiased, the population Jacobian stays nonsingular, and 
+the decoder estimates remain consistent.  This experiment 
+highlights a key strength of ZQE: robustness to severe 
+misspecification of the approximate posterior, a setting in which 
+standard variational methods break down.
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+\section{Method}
+\label{sec:method}
+
+\subsection{Model setup}
+{\color{red} For now this section is heavy in notations and math. We will push most of it to the Appendix.}
+
+
+We consider a parametric latent variable model
+\[
+\Y, \Z \sim f_{\Y, \Z;\,\bt}(\cdot, \cdot) \;=\; f_{\Y\mid\Z;\,\bt}(\cdot \mid \cdot)\, f_{\Z}(\cdot),
+\]
+where $\Y \in \mathcal{Y} \subseteq \mathbb{R}^p$ is observed, $\Z \in \mathcal{Z} \subseteq \mathbb{R}^q$ is latent, $\bt \in \Theta \subseteq \mathbb{R}^r$ is the parameter of interest and $f_\Z(\cdot)$ is a known prior on $\Z$. Furthermore, for any given pair of values $(\y, \z) \in \mathcal{Y}\times\mathcal{Z}$, we assume that $f_{\Y\mid\Z;\,\bt}(\y \mid \z)$ belongs to the exponential family in canonical form:
+\[
+f_{\Y|\Z;\,\bt}(\y \mid \z)
+= \exp\!\left\{ T(\y)^\top \eta(\z,\bt) \;-\; A\!\bigl(\eta(\z,\bt)\bigr) \;+\; B(\y) \right\},
+\]
+where $T(\y)\in\mathbb{R}^p$ is the sufficient statistic, $\eta(\z,\bt)\in\mathbb{R}^p$ the natural parameter, and $A(\cdot)$ the log-partition function. The variables $\Z$ being latent, the log-likelihood is formed as ...
+
+
+
+
+
+When the conditional distribution is a member of the exponential family, the score function \eqref{eqn:score} takes the form\footnote{The derivation is available in the Appendix \eqref{apx:mle-estimating-equations}.}
+%
+\begin{equation}
+    s(\bt; \y_i) 
+    = \mathbb{E}_{f_{\Z|\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z;\bt)^\top \left(T(\y_i) - \mu(\Z; \bt)\right)\right],
+\label{eqn:score_expfam}
+\end{equation}
+%
+where we define
+\[
+D(\z;\bt) \;:=\; \frac{\partial \eta(\z,\bt)}{\partial \bt} \;\in\; \mathbb{R}^{p\times r},
+\qquad
+\mu(\z; \bt) \;:=\; \mathbb{E}_{f_{\Y\mid\Z;\,\bt}(\cdot\mid \z)}[\,T(\Y)\,].
+\]
+\gb[inline]{Delete these definitions and use the original quantities instead? They don't bring much anymore.}
+%
+The score satisfies the property --  sometimes called the \emph{first Bartlett identity} --  that its expectation under the true model $f_{\Y;\,\bto}(\cdot)$ is zero at $\bt=\bto$, i.e. $\mathbb{E}_{f_{\Y;\,\bt_0}(\cdot)}[s(\bt; \bt)]_{\bt=\bto} = 0$, as can be easily verified. This property is fundamental to the desirable theoretical properties of the MLE, as it guarantees the estimating equations of the MLE are unbiased: in fact, an estimator whose estimating equations are not $0$ in expectation is asymptotically biased. 
+
+
+
+Note that the score function in exponential families latent variable models can be decomposed into the difference of two expectations: 
+one involving a \emph{data-driven} quantity, which carries the sample information, 
+and one involving a \emph{model-based} quantity, which serves as a centering term:
+\begin{align}
+    s(\bt;\y_i) 
+    &= \underbrace{\mathbb{E}_{f_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z;\bt)^\top T(\y_i) \right]}_{\vcentcolon =\; m(\y_i; \bt)}
+    \;-\;
+    \underbrace{\mathbb{E}_{f_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z;\bt)^\top \mu(\Z; \bt)\right]}_{\vcentcolon =\; b(\y_i; \bt)}\\
+    &= m(\y_i; \bt) - b(\y_i;\bt)
+\label{eqn:score_expfam_decomposed}
+\end{align}
+
+% \input{definition_MLE}
+Unfortunately, the two quantities $m(\y_i;\bt)$ and $b(\y_i;\bt)$ cannot be computed in practice, because the posterior density $f_{\Z\mid\Y;\,\bt}$ does not lead to easily computable quantities. 
+
+
+
+\newpage
+\paragraph{NO C!}
+
+We adopt the strategy of standard methods, which propose to replace the posterior 
+density $f_{\Z\mid\Y;\,\bt}$ by a surrogate $q_{\Z\mid\Y;\,\bt}$, more convenient for 
+computations. We thus define the following quantities
+%
+\begin{align}
+m_q(\y_i; \bt) \vcentcolon &= 
+\mathbb{E}_{q_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}
+\!\left[D(\Z;\bt)^\top T(\y_i)\right],\\[4pt]
+b_q(\y_i; \bt) \vcentcolon &= 
+\mathbb{E}_{q_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}
+\!\left[D(\Z;\bt)^\top \mu(\Z; \bt)\right],
+\end{align}
+%
+so that the exact score may be written as $s(\y_i;\bt)=m(\y_i;\bt)-b(\y_i;\bt)$ 
+(see \eqref{eqn:score_expfam_decomposed}). The first term, $m(\y_i;\bt)$, is entirely 
+data–driven; the second term, $b(\y_i;\bt)$, is a model–based centering arising from the 
+log–partition function $A(\eta)$.
+
+A key observation in latent variable exponential-family models is that 
+$b(\y_i;\bt)$ contains no additional information about the specific observation $\y_i$ 
+beyond what $q_{\Z\mid\Y;\bt}$ imputes for $\Z$. When $q$ is misspecified, this 
+model–based centering becomes equally unreliable, and directly propagates encoder bias 
+into the estimating equations. In contrast, $m(\y_i;\bt)$ captures the full 
+data–dependent contribution of the complete–data log-likelihood.
+
+Motivated by this decomposition, we retain only the informative term $m_q(\y_i;\bt)$ and 
+discard the model-based centering term. This leads to the following \emph{approximate 
+estimating function}:
+%
+\begin{equation}
+    \psi_{q}(\bt;\y_i) \;=\; m_q(\y_i;\bt).
+    \label{eqn:psi-q}
+\end{equation}
+
+While $\psi_q$ is straightforward to compute for any choice of $q$, it is in general 
+biased as an estimating function, since $\E_{f_{\Y;\,\bt_0}}[\psi_q(\bt_0;\Y)] \neq 0$ 
+whenever $q \neq f$. The central idea of our method is simply to remove this bias by 
+construction, through the usual Z-estimation centering step.
+
+More precisely, define the centered estimating equations
+%
+\begin{equation}
+\Psi_{n;\,q}(\bt)
+\;=\;
+\frac{1}{n}\sum_{i=1}^n \psi_q(\bt;\y_i)
+\;-\;
+\mathbb{E}_{f_{\Y;\,\bt}}\left[\psi_q(\bt;\Y)\right],
+\label{eqn:Zq-estimating-equations-sample-c0}
+\end{equation}
+%
+and define the Zq estimator as the root of $\Psi_{n;\,q}(\bt)=0$.
+
+This centering removes, by construction, the bias induced by the approximate posterior, 
+regardless of the quality of $q$. The resulting estimating equations are unbiased, 
+and—as the next sections show—lead to a consistent and asymptotically Normal estimator 
+under mild conditions, without ever differentiating through $q$.
+
+
+\newpage
+
+We adopt the strategy of standard methods, which propose to replace the posterior density $f_{\Z\mid\Y;\,\bt}$ by a surrogate $q_{\Z\mid\Y;\,\bt}$, more convenient for computations. We thus define the following quantities
+%
+\begin{align}
+m_q(\y_i; \bt) \vcentcolon &= \mathbb{E}_{q_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\left[D(\Z;\bt)^\top T(\y_i)\right]\\
+b_q(\y_i; \bt) \vcentcolon &= \mathbb{E}_{q_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\left[D(\Z;\bt)^\top \mu(\Z; \bt)\right],
+\end{align}
+%
+together with the \textit{estimating function}:
+%
+\begin{equation}
+    \psi_{q,c}(\bt;\y_i) = m_q(\y_i; \bt) - c \cdot b_q(\y_i; \bt),
+    \label{eqn:psi-q-c}
+\end{equation}
+where the scalar $c\in [0,1]$ is a continuation parameter whose role will be promptly explained. Thus, the estimating function $\psi_{q,c}$ and the score $s$ differ only by the approximating quantity $q$ and the continuation parameter $c$. The function $\psi_{q,c}$ is thus a computationally friendly approximation of the score function $s$. Note that if $q_{\Z\mid\Y;\,\bt}(\z \mid \y_i) = \delta(\z - g(\y; \bt)))$ is a degenerate Dirac-delta density for some \textit{imputation function} $g: \mathbb{R}^p \times \bm \Theta \to \mathbb{R}^q$, the quantity $m_q$ becomes $m_q(\y_i;\bt) = D(g(\y_i, \bt), \bt)^\top T(\y_i)$, and similarly for $b_q$. That is, our current framework includes another possible strategy of \textit{imputing} the latent variables by a point estimate, which can for instance be the ``maximum a posteriori'' (MAP) value, which is the mode of the posterior density. In general, our framework can involve any approximation of the quantities $m$ and $q$:  it does not require that the approximation be limited to a change in the posterior density. For clarity of exposition, we will however retain the ``approximated density" version. 
+
+{\color{red}
+\paragraph{Role of the continuation parameter.}
+The term $b_q(\y_i;\theta)$ acts as a \emph{model-based centering} of the estimating
+function, arising from the log-partition function $A(\eta)$.  
+However, when the surrogate posterior $q_{Z\mid Y}$ is poor, this centering becomes
+equally unreliable, because $\mu(Z;\theta)$ is then computed under a misspecified
+distribution.  
+Relying on such a distorted centering introduces a systematic bias in the resulting
+estimating equations.  
+The simple idea behind our method is to remove this source of bias by construction:
+the continuation parameter $c\in[0,1]$ modulates how strongly the estimator relies
+on the potentially flawed model-based centering, with $c=0$ removing it entirely.  
+Crucially, the \emph{global} centering enforced by the Z-estimation correction
+$\mathbb{E}_{f_Y}[\psi_{q,c}(\theta;Y)]$ always remains valid, ensuring that the
+final estimating equations are unbiased regardless of the quality of $q$.
+
+}
+
+\gb[inline]{No continuation parameter! FORGET THE c! OUT!
+We simply retain the informative part of the complete-data log-likelihood and discard the partition term, which is uninformative and highly sensitive to posterior misspecification. We then remove the residual bias through centering.}
+
+
+
+Unfortunately, unlike for the score function, the estimating function \eqref{eqn:psi-q-c} is not $0$ in expectation, which will yield biased estimators. A straightforward correction is to subtract from $\psi_{q,c}$ its expectation under the true model $f_{\Y;\,\bt}$, which makes them unbiased by construction, and allows us to define the following (unbiased) Zq estimator.
+
+\begin{definition}[Zq Estimator]
+We define the ZQE (Zq-Estimator) estimator as the root of the following \textit{sample estimating equations}:
+\begin{equation}
+\Psi_{n;\,q,c}(\bt) \vcentcolon = \frac{1}{n}\sum_{i=1}^n \psi_{q,c}(\bt;\y_i) - \mathbb{E}_{f_{\Y;\,\bt}}\left[\psi_{q,c}(\bt;\Y)\right] = 0.
+\label{eqn:Zq-estimating-equations-sample}
+\end{equation}
+%
+\end{definition}
+Leveraging Z-estimation theory, we will promptly show that Zq estimator is consistent and asymptotically Normal, provided $q$ does not stray too far from $f$. In practice, what consists of `` too far" is surprisingly lenient: it turns out the Zq estimator is surprisingly robust to mis-specification of $q$, and this robustness is controlled for by the continuation factor $c$. 
+
+
+
+\subsection{Asymptotic Theory of the Zq Estimator}
+
+First, write  the corresponding \textit{population estimating equation}
+\begin{equation}
+\Psi_{q,c}(\bt)\;=\;\E_{f_{\Y;\,\bto}}\!\big[\psi_{q,c}(\bt;\Y)\big]\;-\;\E_{f_{\Y;\,\bt}}\!\big[\psi_{q,c}(\bt;\Y)\big],
+\label{eqn:Zq-estimating-equation-population}
+\end{equation}
+and its derivative, the Jacobian:
+\begin{equation}
+    A_{q,c}(\bt)\;:=\;-\nabla_\bt \Psi_{q,c}(\bt) = \mathbb{E}_{f_{\Y;\bt}(\cdot)}\left[\psi_{q,c}(\bt;\Y)s(\bt;\Y)^\top\right].
+\label{eqn:jacobian}
+\end{equation}
+%
+The population equation \eqref{eqn:Zq-estimating-equation-population} is unbiased 
+by construction, regardless of $q$. Its Jacobian \eqref{eqn:jacobian} plays a 
+central role in the asymptotics of the Zq estimator. Unlike in most approximate 
+frameworks, where differentiation through the surrogate posterior is required and 
+often intractable, here the Jacobian takes a remarkably simple form. This makes the 
+Z-estimation framework especially well suited for latent variable models. A derivation of \eqref{eqn:jacobian} is available in Appendix \eqref{math:jacobian}.
+
+\begin{remark}[No need to differentiate through the approximate posterior]
+A key advantage of the Z-estimation approach is that the Jacobian involves only the 
+estimating function and the score, and does not require differentiation through the 
+approximating density $q$. In practice, this means any convenient approximation can be 
+used—amortized variational inference, Laplace approximation, Gaussian quadrature, 
+MAP imputation, or others. While such methods alone generally produce biased estimators, 
+the Zq framework restores unbiasedness and provides a clean asymptotic theory 
+(Thm.~\ref{thm:Zq-asymptotics}), with no need to differentiate through the posterior distribution. We took full advantage of this fact when estimating the asymptotic variance of the estimator.
+\end{remark}
+
+
+
+Next, we impose the following standard assumptions for Z-estimation,
+
+\begin{assumption}[Uniform convergence]
+With probability one,
+\[
+\sup_{\bt \in \Theta}\,
+\big\|\,\Psi_{n;\,q,c}(\bt)-\Psi_{q,c}(\bt)\,\big\|
+\;\longrightarrow\;0 \qquad \text{as } n\to\infty.
+\]
+\label{ass:psi-uniform-convergence}
+\end{assumption}
+%
+The following assumption lies at the cornerstone of our estimation theory:
+%
+\begin{assumption}[Nonsingularity]
+    Assume the standard regularity conditions allowing the exchange of derivatives and integrals.    The Jacobian 
+    \(
+        A_{q,c}(\bt) = -\,\nabla_\bt \Psi(\bt)
+    \)
+    is nonsingular at the true value $\bt_0$.
+    \label{ass:jacobian-nonsigular}
+\end{assumption}
+
+
+\noindent Assumption~\ref{ass:psi-uniform-convergence} is standard in Z-estimation: it ensures that the sample estimating equations converge uniformly to their population counterparts, so that asymptotic arguments can be carried out uniformly over the parameter space.  
+
+Assumption~\ref{ass:jacobian-nonsigular} is more restrictive. Nonsingularity of the Jacobian at the true parameter value is used to prove local identifiability and, in turn, both consistency and asymptotic normality of the estimator. In practice, this condition restricts the choice of approximation $q$, since poor surrogates can lead to singularities. For latent variable models, where parameters are often identified only up to an equivalence class, one must adopt a parameterization or impose constraints to ensure that the criterion is well-defined -- exactly as in the MLE framework.  
+
+% Lemma for uniqueness
+% --------------------
+\begin{lemma}[Local Identification ]
+\label{lem:local-id-centered}
+Let $\Theta\subset\mathbb{R}^r$ be open. Suppose $\psi_{q,c}(\cdot;\y)$ is measurable in $\y$
+and continuously differentiable in $\bt$ in a neighborhood of $\bto$, with differentiation under
+the integral sign justified by standard regularity conditions. Notice that the population map \eqref{eqn:Zq-estimating-equation-population} admits $\Psi_{q,c} (\bto)=0$. If the Jacobian $A_{q,c}(\bt)$ satisfies Assumption \eqref{ass:jacobian-nonsigular}, there exists a neighborhood $U$ of $\bto$ such that
+\[
+\{\bt\in U:\ \Psi_{q,c}(\bt)=0\}\;=\;\{\bto\}.
+\]
+In particular, $\bto$ is the unique local solution to $\Psi(\bt)=0$.
+\end{lemma}
+
+\begin{proof}
+By definition,
+$\Psi_{q,c}(\bto)=\E_{f_{\Y;\,\bto}}[\psi_{q,c}(\bto;\Y)]-\E_{f_{\Y;\,\bto}}[\psi_{q,c}(\bto;\Y)]=0$.
+Under the stated regularity, $\Psi_{q,c}$ is $C^1$ near $\bto$, and by assumption
+$-\nabla_\bt\Psi(\bto)=A_{q,c}(\bto)$ is nonsingular. The Implicit Function
+Theorem then yields neighborhoods $U$ of $\bto$ and $V$ of $0$ such that
+$\Psi:U\to V$ is a diffeomorphism. Hence $0$ has the unique preimage $\bto$ in $U$,
+proving \emph{local} uniqueness.
+\end{proof}
+
+
+With these assumptions and standard regularity conditions, we are now ready to state the main Theorem for the asymptotics of the Zq-estimator, which follows straightforwardly from the Z-estimation framework.
+
+% Main Theorem
+% ------------
+\begin{theorem}[The Zq Estimator is Consistent and Asymptotically Normal]
+\label{thm:Zq-asymptotics}
+Fix $c \in [0,1]$ and suppose Assumption \eqref{ass:psi-uniform-convergence} and Assumption \eqref{ass:jacobian-nonsigular} hold. Then the Zq estimator $\hat\bt_n$, solution to \eqref{eqn:Zq-estimating-equations-sample}, satisfies:
+
+\begin{enumerate}
+\item \textbf{Consistency.} $\hat\bt_n \xrightarrow{p} \bt_0$.
+\item \textbf{Asymptotic normality.} 
+\[
+\sqrt{n}\,(\hat\bt_n - \bt_0)
+\;\;\Longrightarrow\;\;
+\mathcal N\!\big(0,\,\Sigma_{q,c}\big),
+\]
+with asymptotic covariance of sandwich form
+\[
+\Sigma_{q,c}
+= A_{q,c}(\bt_0)^{-1}\, B_{q,c}(\bt_0)\, A_{q,c}(\bt_0)^{-\top},
+\]
+where
+\begin{align*}
+A_{q,c}(\bt_0) &= -\,\E_{f_{\Y;\,\bt_0}}\!\Big[\,\{m_q(\Y;\bt_0)-c\,b_q(\Y;\bt_0)\}\, s(\bt_0;\Y)^\top\Big],\\[4pt]
+B_{q,c}(\bt_0) &= \Var_{f_{\Y;\,\bt_0}}\!\Big(m_q(\Y;\bt_0)-c\,b_q(\Y;\bt_0)\Big).
+\end{align*}
+\end{enumerate}
+In particular, $\bt_0$ is a population root of the centered estimating equations for any choice of $q$ that satisfies Assumption \eqref{ass:jacobian-nonsigular}.
+\end{theorem}
+
+\begin{proof}
+
+By Assumption \eqref{ass:psi-uniform-convergence}, we have $\Psi_n \to \Psi$.
+
+Now, by Assumption \eqref{ass:jacobian-nonsigular} and lemma \eqref{lem:local-id-centered}, $\Psi_{q,c}(\bt)$ admits a unique root locally around $\bto$.
+We thus satisfy all conditions for consistency and asymptotic normality of a Z-estimator (see Theorem~5.41 in \citealp{vandervaart1998}).
+\todo{BP: Complete if nessessary}
+\end{proof}
+
+
+\subsection{Sufficient conditions for Nonsingularity of the Jacobian}
+
+Because the nonsingularity of the Jacobian plays a critical role in the asymptotics of our estimator, 
+we now propose sufficient conditions for Assumption \eqref{ass:jacobian-nonsigular}, 
+which also shed light on the role of the continuation factor $c$ in the estimating function 
+\eqref{eqn:psi-q-c}. 
+
+We first note that
+\[
+A_{q,c}(\bto)\;=\;-\E\!\big[\psi_{q,c}(\bto;\Y)\,s(\bto;\Y)^\top\big]
+= -\E\!\big[s(\bto;\Y)s(\bto;\Y)^\top\big]\;-\;M_{q,c}(\bto)
+= -\mathcal I(\bto) - M_{q,c}(\bto),
+\]
+where $\mathcal I(\bto)=\E[s(\bto;\Y)s(\bto;\Y)^\top]$ is the Fisher information and
+\[
+M_{q,c}(\bto) \;=\; \E\!\big[(\psi_{q,c}(\bto;\Y)-s(\bto;\Y))\,s(\bto;\Y)^\top\big].
+\]
+
+Thus, $M_{q,c}(\bto)$ quantifies the deviation of $A_{q,c}(\bto)$ from $-\mathcal I(\bto)$. 
+This deviation should remain controlled provided $q_{\Z\mid\Y;\bt}$ is not too far from 
+$f_{\Z\mid\Y;\bt}$. Formally, we require:
+
+\begin{assumption}
+The Fisher information $\mathcal{I}(\bt)$ exists and is nonsingular at $\bt=\bto$, and
+\[
+\bigl\|\mathcal{I}(\bto)^{-1/2}\,M_{q,c}(\bt_0)\,\mathcal{I}(\bto)^{-1/2}\bigr\|_{op} < 1.
+\]
+\label{ass:M-whitened-smaller-1}
+\end{assumption}
+
+\begin{remark}[Interpretation]
+The whitening by $\mathcal{I}(\bto)^{-1/2}$ makes the deviation unitless, so that 
+$\|\mathcal{I}(\bto)^{-1/2}M_{q,c}(\bt_0)\mathcal{I}(\bto)^{-1/2}\|_{op}<1$ expresses 
+the approximation error on the natural scale of the model. 
+Intuitively, the error must not overwhelm the Fisher information, which ensures 
+the corrected Jacobian remains invertible. 
+In practice this is quite mild and allows for surprisingly large mis-specification of $q$.
+\end{remark}
+
+Under Assumption \eqref{ass:M-whitened-smaller-1}, nonsingularity follows directly:
+
+\begin{lemma}[Nonsingularity via Neumann series]
+Define
+\[
+A_{q,c}(\bt_0)\;=\;-\mathcal I(\bto) \;-\; M_{q,c}(\bt_0).
+\]
+
+If Assumption \eqref{ass:M-whitened-smaller-1} holds, then $A_{q,c}(\bt_0)$ is invertible.
+\end{lemma}
+
+\begin{proof}
+Set $\widetilde M := \mathcal I(\bto)^{-1/2} M_{q,c}(\bt_0)\,\mathcal I(\bto)^{-1/2}$. 
+Since $\mathcal I(\bto)\succ0$, the square root $\mathcal I(\bto)^{\pm 1/2}$ exists. 
+Then
+\[
+A_{q,c}(\bt_0)
+= -\,\mathcal I(\bto)^{1/2}\bigl(I+\widetilde M\bigr)\,\mathcal I(\bto)^{1/2},
+\]
+where $I$ denotes the identity matrix of appropriate dimension.
+
+By Assumption \eqref{ass:M-whitened-smaller-1}, $\|\widetilde M\|_{op}<1$, 
+so the Neumann series converges:
+\[
+\bigl(I+\widetilde M\bigr)^{-1}=\sum_{k=0}^{\infty}(-\widetilde M)^k.
+\]
+Hence $I+\widetilde M$ is invertible, and
+\[
+A_{q,c}(\bt_0)^{-1}
+= -\,\mathcal I(\bto)^{-1/2}\bigl(I+\widetilde M\bigr)^{-1}\mathcal I(\bto)^{-1/2}.
+\]
+Therefore $A_{q,c}(\bt_0)$ is nonsingular.
+\end{proof}
+
+
+\begin{corollary} The scalar $c$ tunes the trade-off between robustness of the identifiability condition ($c=0$) and efficiency (approaching $c=1$ when $q$ is close to the true posterior). 
+Indeed, if $q=f$ and $c=1$, then $\psi_{q,c}=s$, so
+$A_{q,c}(\bt_0)=-I(\bt_0)$, $B_{q,c}(\bt_0)=I(\bt_0)$, hence
+$\Sigma_{q,c}=I(\bt_0)^{-1}$ (we recover MLE efficiency). By continuity, for $q\approx f$ and $c\approx1$,
+$\Sigma_{q,c}$ is close to $I(\bt_0)^{-1}$ (higher efficiency).
+
+\medskip
+Write
+\[
+\widetilde M_{q,c}=\underbrace{\mathcal I^{-1/2}\E[(m_q-s)s^\top]\mathcal I^{-1/2}}_{\widetilde M_{q,0}}
+\;-\;c\,\underbrace{\mathcal I^{-1/2}\E[b_q\,s^\top]\mathcal I^{-1/2}}_{\widetilde B_q}.
+\]
+Then, by the triangle inequality,
+\[
+\|\widetilde M_{q,c}\|_{op}\le \|\widetilde M_{q,0}\|_{op}+c\,\|\widetilde B_q\|_{op}.
+\]
+Thus, in a minimax sense, the Neumann condition $\|\widetilde M_{q,c}\|_{op}<1$ is easiest to satisfy at $c=0$
+(and becomes stricter as $c\uparrow1$). At $c=1$ it typically requires $q$ close to $f$ (indeed
+$\widetilde M_{f,1}=0$). Hence $c$ trades robustness to mis-specification ($c\!\downarrow\!0$) for efficiency ($c\!\uparrow\!1$).
+\end{corollary}
+
+\subsection{Further Theory}
+\todo[inline]{Explore more of interaction between c and q,f: This result is a bit light. Specifically, It would be good  to explore what happens when q=f: if c=1, then it's fine we recover exactly the asymptotic MLE, but what if $c<1$? can we guarantee invertibility for all $c\in [0,1]$? is it "always safe" -- at the cost of efficiency -- to take smaller c, however close we are to true $f$ ?}
+
+\todo[inline]{Relate KL divergence to our result: basically we only need invertible Jacobian. Maybe we can find some bounds on KL divergence between $f$ and $q$.}
+
+\todo[inline]{Clever way to estimate the asymptotic variance without resorting to computing s? bootstrap at fixed encoder? other ideas? For marginal likelihood we have Louis' identity.}
+
+\subsection{Estimating the Asymptotic Variance}\label{sec:avar}
+
+We now describe practical, score-free procedures to estimate the asymptotic covariance
+$\Sigma_{q,c}$ in Theorem~\ref{thm:Zq-asymptotics}. The key device is an ``oracle''
+version of our estimating function that freezes the approximation $q$ at the true
+parameter.
+
+\paragraph{Oracle estimating function and estimator.}
+Define
+\[
+\psi_{q\!-\!o,c}(\bt;\y)
+\;=\;
+\E_{q_{\Z\mid\Y;\,\bto}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top T(\y)\big]
+\;-\;
+c\,\E_{q_{\Z\mid\Y;\,\bto}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top \mu(\Z;\bt)\big].
+\]
+Let the population map and its sample counterpart be
+\begin{align*}
+\Psi_{q\!-\!o,c}(\bt)\;&=\;\E_{f_{\Y;\,\bto}}\big[\psi_{q\!-\!o,c}(\bt;\Y)\big]
+-\E_{f_{\Y;\,\bt}}\big[\psi_{q\!-\!o,c}(\bt;\Y)\big],\\
+\Psi_{n;\,q\!-\!o,c}(\bt)\;&=\;\frac1n\sum_{i=1}^n \psi_{q\!-\!o,c}(\bt;\y_i)
+-\E_{f_{\Y;\,\bt}}\big[\psi_{q\!-\!o,c}(\bt;\Y)\big].
+\end{align*}
+The \emph{$Z_{q\!-\!o}$ estimator} $\hat\bt^{\,o}_n$ solves $\Psi_{n;\,q\!-\!o,c}(\bt)=0$.
+
+\begin{proposition}[Same first-order covariance]\label{prop:same-avar}
+Under the conditions of Theorem~\ref{thm:Zq-asymptotics},
+the $Z_q$ and $Z_{q\!-\!o}$ estimators have the same asymptotic covariance:
+\[
+\Sigma_{q,c}^{(o)} \;=\; \Sigma_{q,c}.
+\]
+\end{proposition}
+
+\begin{proof}
+At $\bt=\bto$,
+$\psi_{q,c}(\bto;\Y)=\psi_{q\!-\!o,c}(\bto;\Y)$ because both use
+$q_{\Z\mid\Y;\,\bto}$. Hence
+\[
+A_{q,c}(\bto)\;=\;-\E\!\big[\psi_{q,c}(\bto;\Y)s(\bto;\Y)^\top\big]
+\;=\;-\E\!\big[\psi_{q\!-\!o,c}(\bto;\Y)s(\bto;\Y)^\top\big]
+\;=\;A_{q\!-\!o,c}(\bto),
+\]
+and similarly $B_{q,c}(\bto)=\Var(\psi_{q,c}(\bto;\Y))=\Var(\psi_{q\!-\!o,c}(\bto;\Y))
+= B_{q\!-\!o,c}(\bto)$. The sandwich limits coincide.
+\end{proof}
+
+In practice $\bto$ is unknown. We therefore use the \emph{feasible oracle} obtained by
+freezing $q_{\Z\mid\Y;\,\cdot}$ at $\hat\bt_n$:
+\[
+\psi_{\widehat q\!-\!o,c}(\bt;\y)
+\;:=\;
+\E_{q_{\Z\mid\Y;\,\hat\bt_n}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top T(\y)\big]
+- c\,\E_{q_{\Z\mid\Y;\,\hat\bt_n}(\cdot\mid \y)}\!\big[D(\Z;\bt)^\top \mu(\Z;\bt)\big].
+\]
+Replacing $\psi_{q\!-\!o,c}$ by $\psi_{\widehat q\!-\!o,c}$ is $o_p(1)$ at $\bto$ and
+does not affect the first-order covariance.
+
+\paragraph{Feasible estimation of $\Sigma_{q,c}$.}
+We give two score-free, implementation-light options.
+
+\medskip
+\noindent\textbf{(i) Indirect-inference / simulated-moment trick (variance halving).}
+Define the \emph{simulated} centered map that matches the observed average to a
+single Monte Carlo average of equal size:
+\[
+\widehat\Psi^{\,\mathrm{sim}}_{n}(\bt;\omega)
+\;=\;
+\frac1n\sum_{i=1}^n \psi_{\widehat q\!-\!o,c}(\bt;\y_i)
+\;-\;
+\frac1n\sum_{j=1}^n \psi_{\widehat q\!-\!o,c}\big(\bt;\Y^{*(j)}(\omega)\big),
+\quad
+\Y^{*(j)}(\omega)\stackrel{\text{i.i.d.}}{\sim} f_{\Y;\,\bt}.
+\]
+For each independent seed $\omega_m$ ($m=1,\dots,M$), solve
+$\widehat\Psi^{\,\mathrm{sim}}_{n}(\bt;\omega_m)=0$ to get $\hat\bt^{(m)}$.
+Standard simulated-moment theory implies
+\[
+\Var\!\big(\hat\bt^{(m)}\big) \;\Longrightarrow\; 2\,\Sigma_{q,c}
+\quad\text{when the MC size equals $n$ and simulations are independent.}
+\]
+Hence the estimator
+\[
+\widehat\Sigma_{\mathrm{II}}
+\;=\;
+\frac{1}{2}\cdot
+\frac{1}{M-1}\sum_{m=1}^M\big(\hat\bt^{(m)}-\bar\bt\big)\big(\hat\bt^{(m)}-\bar\bt\big)^\top,
+\qquad
+\bar\bt=\frac1M\sum_{m=1}^M \hat\bt^{(m)},
+\]
+is consistent for $\Sigma_{q,c}$. This uses one MC draw per replication (no nested
+loops), and avoids evaluating $s$.
+
+\medskip
+\noindent\textbf{(ii) Bootstrap.}
+Alternatively, resample and re-estimate:
+
+\emph{Parametric bootstrap:} For $b=1,\dots,B$, simulate
+$\{\Y^{*(b)}_i\}_{i=1}^n \stackrel{\text{i.i.d.}}{\sim} f_{\Y;\,\hat\bt_n}$,
+solve $\Psi_{n;\,\widehat q\!-\!o,c}^{*(b)}(\bt)=0$ on the bootstrap sample (with
+$q$ frozen at $\hat\bt_n$), and collect $\hat\bt^{*(b)}$.
+Set
+\[
+\widehat\Sigma_{\mathrm{pboot}}
+\;=\;
+\frac{1}{B-1}\sum_{b=1}^B
+\big(\hat\bt^{*(b)}-\bar\bt^*\big)\big(\hat\bt^{*(b)}-\bar\bt^*\big)^\top,
+\qquad
+\bar\bt^*=\frac1B\sum_{b=1}^B \hat\bt^{*(b)}.
+\]
+
+\emph{Nonparametric bootstrap:} Resample the indices $i$ with replacement from
+$\{1,\dots,n\}$, rebuild the estimating equations on each resample (again freezing
+$q$ at $\hat\bt_n$), and compute the covariance of the bootstrap replicates.
+Both variants are consistent; the parametric version is typically more stable in
+latent-variable settings.
+
+\medskip
+Both procedures only require solving the same centered estimating equations repeatedly,
+with $q$ held fixed at $\hat\bt_n$, and \emph{do not} require access to the score $s$
+nor differentiation through $q$.
+
+\begin{remark}[Bootstrapping an equivalent estimator]
+It may appear unusual to approximate the variance of $Z_q$ by bootstrapping the
+oracle estimator $Z_{q\!-\!o}$. However, this is justified by standard
+Z-estimation theory: asymptotically equivalent estimators (i.e., sharing the same
+influence function) have identical first-order distributions, so either may be
+used for inference. See \citet[Thm.~5.41 and Sec.~23.3]{vandervaart1998} for
+general Z-estimators and bootstrap consistency, and
+\citet{newey1994large,gourieroux1993indirect} for related discussions.
+\end{remark}
+
+
+\begin{remark}{Remark (Bias via bootstrap; not used).}
+A bootstrap (and indirect inference) can also estimate small-sample bias, e.g.,
+$\widehat{\mathrm{bias}}=\bar\bt^*-\hat\bt_n$ (parametric or nonparametric),
+and a bias-corrected estimator $\hat\bt_n^{\,\mathrm{bc}}=\hat\bt_n-(\bar\bt^*-\hat\bt_n)$.
+We do not apply this correction and use the bootstrap solely to estimate the asymptotic covariance $\Sigma_{q,c}$.
+\end{remark}
+
+\subsection{Special case: GLLVM with imputed values}\label{sec:gllvm-impute}
+Consider a GLLVM with point-imputed latents, $q_{\Z\mid\Y;\bt}(\z\mid\y)=\delta\!\big(\z-g(\y;\bt)\big)$.
+Then
+\[
+\psi_{q,c}(\bt;\y)
+= D\!\big(g(\y;\bt),\bt\big)^\top T(\y)
+- c\,D\!\big(g(\y;\bt),\bt\big)^\top \mu\!\big(g(\y;\bt);\bt\big),
+\]
+so each stochastic update depends only on the imputed $g(\y;\bt)$ and standard GLM components
+$\{T,\mu,D\}$. The \emph{oracle} version freezes $q$ at $\hat\bt_n$,
+\[
+\psi_{\widehat q\!-\!o,c}(\bt;\y)
+= D\!\big(g(\y;\hat\bt_n),\bt\big)^\top T(\y)
+- c\,D\!\big(g(\y;\hat\bt_n),\bt\big)^\top \mu\!\big(g(\y;\hat\bt_n);\bt\big),
+\]
+so solving $\Psi_{n;\,\widehat q\!-\!o,c}(\bt)=0$ reduces to fitting a \emph{GLM-like} system with fixed
+features $g(\y;\hat\bt_n)$. The score $s$ is still unavailable, hence we do not use closed-form
+sandwich. However, variance estimation is \emph{fast}: each bootstrap or simulated-moment replicate is
+just a GLM solve (e.g., IRLS), with no differentiation through $q$.
+
+\paragraph{Practical inference.}
+We use the feasible-oracle path (\S\ref{sec:avar}): (i) \textbf{simulated-moment trick} with one Monte
+Carlo draw per replication and variance halving, or (ii) \textbf{bootstrap} (parametric or
+nonparametric). Both require only repeated GLM fits with fixed $g(\cdot;\hat\bt_n)$ and thus scale
+linearly with the number of replications. This yields standard errors and Wald intervals with the same
+first-order validity as for $Z_q$ (Prop.~\ref{prop:same-avar}) while remaining computationally light.
+
+
+\paragraph{Remark (Choice of the sufficient statistic \(T(Y)\)).}
+Although exponential-family models are typically written with a fixed canonical 
+sufficient statistic---for example \(T(Y)=Y\) for Poisson models---the Zq framework 
+does not require using the canonical choice. Any measurable transformation \(T(Y)\) 
+may be used, provided the same transformation is applied to model-generated samples 
+in the centering term. The estimating equation relies only on the identity
+\[
+\E_{q(Z|Y)}\!\left[T(Y)\,\eta(Z,\theta)\right]
+\;=\;
+\E_{q(Z|Y)}\!\left[T(Y^*)\,\eta(Z,\theta)\right]
+\quad\text{at }\theta=\theta_0,
+\]
+so the choice of \(T(\cdot)\) affects numerical stability rather than correctness. 
+This flexibility can be exploited to stabilize gradients in heavy-tailed or 
+highly dispersed models (e.g., using \(T(Y)=\sqrt{Y}\) for overdispersed counts), 
+improve robustness to extreme observations, or normalize scale across heterogeneous 
+responses. The resulting estimator remains consistent under the correct model while 
+allowing practitioners to tailor \(T(Y)\) to the geometry of the data and the 
+optimization landscape.
+
+
+\section{Computations}
+\todo[inline]{Re-write the whole section. this sucks.}
+
+\subsection{Approximate posterior and training scheme}
+
+\todo[inline]{Figure out how to write the posterior with new parameters -- -but the function itself still depends on theta indirectly}
+So far we only assumed that the true posterior $f_{\Z|\Y;\bt}$ is replaced by a tractable surrogate $q_{\Z|\Y;\phi}$. In practice, we parameterize $q$ by an \emph{encoder} with parameters $\phi$, trained jointly with the decoder parameters $\bt$. This is the standard setup in amortized inference: the encoder maps each observation $\y$ to a distribution over $\z$, for instance a Gaussian with mean and variance given by a neural network.  
+
+The encoder is typically trained by maximizing the evidence lower bound (ELBO),
+\[
+\mathcal L_{\text{ELBO}}(\bt,\phi)
+= \E_{q_{\Z|\Y;\phi}}\!\big[\log f_{\Y|\Z;\bt}(\Y|\Z)\big]
+- KL\!\big(q_{\Z|\Y;\phi}\,\|\,f_\Z\big),
+\]
+which encourages $q_{\Z|\Y;\phi}$ to approximate $f_{\Z|\Y;\bt}$. All subsequent modifications concern only the decoder updates; the encoder continues to be trained on this objective.
+
+\subsection{Decoder updates via centered $Z_q$ loss}
+
+The gradient of the ELBO with respect to $\bt$ has the form
+\[
+\nabla_\bt \mathcal L_{\text{ELBO}}
+=\E_{q_{\Z|\Y;\phi}}\!\big[D(\Z;\bt)^\top T(\Y)\big]
+-\E_{q_{\Z|\Y;\phi}}\!\big[D(\Z;\bt)^\top \mu(\Z;\bt)\big].
+\]
+In exponential families the second term can be written as an expectation over synthetic data, since $\mu(\Z;\bt)=\E_{f(\Y^*|\Z;\bt)}[T(\Y^*)]$. This motivates replacing it by a Monte Carlo estimate on a model-generated batch:
+\[
+g(\bt)
+=\E_{q_{\Z|\Y;\phi}}[D(\Z;\bt)^\top T(\Y)]
+-c\,\E_{q_{\Z|\Y;\phi}}[D(\Z;\bt)^\top T(\Y^*)],
+\qquad 
+\Z^*\!\sim f_\Z,\;\Y^*\!\sim f(\cdot|\Z^*;\bt).
+\]
+Here the first expectation is taken over a data minibatch, the second over a model minibatch, and $c\in[0,1]$ is the continuation factor (robust when small, efficient when close to 1). In this step the encoder distribution $q_{\Z|\Y;\phi}$ is treated as fixed (no gradients flow through $\phi$), so only $\bt$ is updated.  
+
+\paragraph{Summary.}  
+\begin{itemize}
+\item Encoder parameters $\phi$: updated by the standard ELBO objective.  
+\item Decoder parameters $\bt$: updated by the centered $Z_q$ gradient $g(\bt)$ above.  
+\end{itemize}
+This simple substitution preserves amortization for $q$ while providing unbiased, robust updates for $\bt$.
+
+\paragraph{Encoder training via ELBO (standard amortized inference).}
+A natural strategy is to train the encoder \(q_\phi(Z\mid Y)\) using the ELBO, 
+exactly as in standard variational inference. This objective is stable, 
+well-understood, and benefits from mature optimization heuristics. 
+Within our framework the encoder is treated as a nuisance: \(\phi\) is updated by 
+maximizing the ELBO, while the decoder parameters are updated using the ZQ 
+estimating equations. This preserves the good numerical properties of variational 
+encoders while allowing the decoder to recover unbiased estimating equations 
+through ZQ.
+
+\paragraph{Encoder training via synthetic supervision (posterior distillation).}
+The ZQ framework also allows an alternative approach that is impossible in 
+classical likelihood-based training: we may train the encoder directly from 
+synthetic latent–observation pairs generated by the decoder. Sampling 
+\(Z^\star \sim p(Z)\) and \(Y^\star \sim f_\theta(Y\mid Z^\star)\) provides exact 
+pairs \((Y^\star, Z^\star)\), so the encoder can be trained by supervised 
+regression, enforcing \(q_\phi(Z\mid Y^\star) \approx Z^\star\). This supplies 
+unlimited clean training data, avoids amortization bias, and does not affect the 
+theoretical guarantees of ZQ since the encoder remains a nuisance parameter. 
+In practice, one may mix ELBO-based amortization with synthetic supervision to 
+combine stability and expressiveness.
+
+
+
+\section{Applications \& Simulations}\label{sec:apps}
+
+\subsection{GLLVM (synthetic)}
+\textbf{Setup.} Standard Poisson–log link GLLVM; simulate $(Y,Z)$ with known $\theta_0$. \\
+\textbf{Estimators.} (i) MAP imputation ($q=\delta$, $c=0$); (ii) same $q$, sweep $c\in[0,1]$; (iii) VAE (ELBO); (iv) Zq–VAE path: $\psi_\alpha=(1-\alpha)\psi_{\text{ELBO}}+\alpha\,\psi_{q,c}$, $\alpha\in[0,1]$. \\
+\textbf{Metrics.} Param RMSE $\|\hat\theta-\theta_0\|$, $\|\bar\psi\|_2$ on holdout, Wald CI coverage (sandwich), $\sigma_{\min}(A_{q,c}(\hat\theta))$. \\
+\textbf{Goal.} Show MAP-$c$ robust at small $c$ and deteriorates as $c\!\uparrow\!1$; show VAE bias; debias along $\alpha\uparrow1$.
+
+\subsection{MNIST (underspecified encoder)}
+\textbf{Setup.} Train VAE (diag-Gaussian encoder), then freeze encoder. \\
+\textbf{Estimators.} (i) VAE baseline; (ii) Zq fine-tune decoder $\theta$ solving $\Psi_{n;q_\phi,c}(\theta)=0$ (try $c\in\{0,0.5,1\}$). \\
+\textbf{Metrics.} IWAE-$k$ NLL (e.g., $k{=}500$), $\|\bar\psi\|_2$, optional FID. \\
+\textbf{Goal.} Reduced $\|\bar\psi\|_2$ and improved/unchanged NLL despite encoder misspecification.
+
+\subsection{Targeted sanity check}
+\textbf{Setup.} Small Gaussian latent model with tractable posterior; set $q=f$. \\
+\textbf{Test.} Sweep $c\in[0,1]$; verify $\sigma_{\min}(A_{f,c}(\hat\theta))>0$ and match MLE at $c{=}1$.
+
+
+
+
+% ----------------------------------
+
+\newpage
+\bibliography{references} 
+\newpage
+\appendix
+\input{appendix_A}
+\input{appendix_B}
+
+\end{document}

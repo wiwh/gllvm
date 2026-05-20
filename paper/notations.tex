@@ -1,0 +1,25 @@
+These are our conventions to make the exposition unambiguous. Maybe we will simplify them later. 
+\begin{itemize}
+    \item A random variable $\Y$ with density $f_{\Y;\,\bt}(\cdot)$ is written $\Y \sim f_{\Y;\,\bt}(\cdot)$, where $\bt$ is the parameter.
+    \item Its expectation is written 
+    \[
+      \mathbb{E}_{f_{\Y;\,\bt}(\cdot)}[\Y] 
+      \;=\; \int \y \, f_{\Y;\,\bt}(\y)\, d\y.
+    \]
+    \item A conditional random variable is written 
+    \[
+      \Y \mid \Z=\z \;\sim\; f_{\Y \mid \Z;\,\bt}(\cdot \mid \z), 
+    \]
+    with density $f_{\Y \mid \Z;\,\bt}(\cdot \mid \z)$ and corresponding expectation
+    \[
+      \mathbb{E}_{f_{\Y \mid \Z;\,\bt}(\cdot \mid \z)}[\Y] 
+      \;=\; \int \y \, f_{\Y \mid \Z;\,\bt}(\y \mid \z)\, d\y.
+    \]
+    \item Joint random variables are whitened as 
+    \[
+        \Y, \Z \;\sim\; f_{\Y,\Z;\,\bt}(\cdot, \cdot)
+    \]
+    
+    \item \textbf{Remark 1}: We use $\cdot$ as argument when we do not refer to a specific pre-image. We write for instance $f_{\Z}(\cdot)$ instead of $f_{\Z}(\z)$ to specify the whole density, not simply evaluated at a particular $\z$. When we want to evaluate it at a particular $\z$, we use the latter.
+    \item \textbf{Remark 2}: We prefer to write using Expectations instead of integrals because expectations carry intuition and is easier to read and manipulate.
+\end{itemize}

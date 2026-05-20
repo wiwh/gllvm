@@ -1,0 +1,181 @@
+\begin{lemma}[Approximation-aware identifiability margin]
+\label{lem:margin}
+Work at $\bt_0$ and write
+\[
+\Delta_m(\y)\;:=\;m_q(\y;\bt_0)-m(\y;\bt_0),\qquad
+\Delta_b(\y)\;:=\;b_q(\y;\bt_0)-b(\y;\bt_0),
+\]
+so that, using $m(\y;\bt_0)=s(\bt_0;\y)+b(\y;\bt_0)$ for exponential families,
+\[
+m_q(\y;\bt_0)-c\,b_q(\y;\bt_0)
+= s(\bt_0;\y) + (1-c)\,b(\y;\bt_0) + \big(\Delta_m(\y)-c\,\Delta_b(\y)\big).
+\]
+Let $I \equiv I(\bt_0)=\Var[s(\bt_0;\Y)]\succ0$ and define
+\[
+\kappa\;:=\;\big\|\,I^{-1/2}\,\E\!\big[b(\Y;\bt_0)\,s(\bt_0;\Y)^\top\big]\,I^{-1/2}\big\|_{\op},
+\qquad
+\varepsilon(c)\;:=\;\Big(\E\big\|\,\Delta_m(\Y)-c\,\Delta_b(\Y)\,\big\|_2^2\Big)^{1/2}.
+\]
+Then the normalized perturbation in Prop.~\textup{\ref{prop:jacobian-identifiability-c}} satisfies
+\[
+\big\|\,\widetilde M_c\,\big\|_{\op}
+\;\le\; (1-c)\,\kappa\;+\;\varepsilon(c).
+\]
+Consequently,
+\[
+\boxed{\ \ (1-c)\,\kappa\;+\;\varepsilon(c)\;<\;1\ \ \Longrightarrow\ \ A_c(\bt_0)\ \text{invertible.}\ }
+\]
+\emph{Sketch.} From \eqref{eq:norm-red},
+$\widetilde M_c=I^{-1/2}\E\big[\{(1-c)b+\Delta_m-c\Delta_b\}\,s^\top\big]I^{-1/2}$. 
+Apply the triangle inequality and Cauchy–Schwarz; since $\Var(I^{-1/2}s)=I_r$, the cross-term with $s$ is bounded by $\varepsilon(c)$.
+\qed
+\end{lemma}
+
+\begin{corollary}[Oracle and near-oracle regimes]
+If $q=f$ then $\varepsilon(c)=0$ and $\|\widetilde M_c\|_{\op}=(1-c)\kappa$; hence $c=1$ yields $A_c(\bt_0)=-I$ and MLE efficiency. 
+More generally, whenever $\varepsilon(c)\to0$ and $c\to1$, we have $\|\widetilde M_c\|_{\op}\to0$ and $A_c(\bt_0)\to -I$.
+\end{corollary}
+
+\begin{theorem}[Efficiency gap to the MLE]
+\label{thm:eff-gap}
+Assume $\tau_c\!:=\!\|\widetilde M_c\|_{\op}<1$ and let
+\[
+V_b\;:=\;\E\!\big[\|I^{-1/2}b(\Y;\bt_0)\|_2^2\big],\qquad
+\Gamma\;:=\;\big\|\,I^{-1/2}\Cov\!\big(b(\Y;\bt_0),s(\bt_0;\Y)\big)I^{-1/2}\big\|_{\op}.
+\]
+Then, with $e_c(\Y):=\Delta_m(\Y)-c\,\Delta_b(\Y)$,
+\[
+\big\|\ \Sigma_c - I^{-1}\ \big\|_{\op}
+\ \le\ C_I\Big[
+\tau_c\;+\;(1-c)^2 V_b\;+\;2(1-c)\Gamma\;+\;\E\!\big[\|I^{-1/2}e_c(\Y)\|_2^2\big]^{1/2}\Big],
+\]
+for some $C_I$ depending only on $I$ (explicitly, $C_I\!=\!2(1-\tau_c)^{-2}$ works with a standard resolvent/Neumann-series bound).
+\emph{In particular}, using Lem.~\ref{lem:margin},
+\[
+\big\|\ \Sigma_c - I^{-1}\ \big\|_{\op}
+\ =\ \mathcal O\!\Big((1-c)\ +\ \varepsilon(c)\Big)
+\quad\text{as}\quad (1-c,\varepsilon(c))\to(0,0).
+\]
+\end{theorem}
+
+\begin{proposition}[Practical, data-driven choice of $c$]
+\label{prop:c-star}
+A simple plug-in rule that avoids $b$ and $s$ (unknown) is to minimize a proxy of $\tr B_c$ using $s_q:=m_q-b_q$ as a surrogate score.
+Define
+\[
+J_q(c)\;:=\;\E\Big[\ \big\|\, s_q(\Y;\bt_0)\;+\;(1-c)\,b_q(\Y;\bt_0)\,\big\|_2^2\ \Big].
+\]
+Then $J_q(c)$ is quadratic in $c$ and is minimized at
+\[
+c_q^\star\;=\;1\;-\;\frac{\E\!\big[\,s_q(\Y;\bt_0)^\top b_q(\Y;\bt_0)\,\big]}{\E\!\big[\,\|b_q(\Y;\bt_0)\|_2^2\,\big]}\,,
+\qquad c_q^\star\ \text{clipped to }[0,1].
+\]
+Operationally, estimate $c_q^\star$ by replacing the expectations with sample averages at the current iterate $\hat\bt$ (and optionally re-tune once).
+When $q\!\approx\! f$, $s_q\!\approx\! s$ and $b_q\!\approx\! b$, so $c_q^\star\!\to\!1$ and the rule is asymptotically MLE-efficient.
+\end{proposition}
+
+\begin{remark}[What these buy you, succinctly]
+\leavevmode
+\vspace{-0.5em}
+\begin{enumerate}
+\item Lem.~\ref{lem:margin} upgrades the invertibility test to a \emph{sharp, computable} margin using $\varepsilon(c)$ that directly measures posterior-approximation error.
+\item Thm.~\ref{thm:eff-gap} quantifies how fast the sandwich covariance converges to $I^{-1}$ as $q\!\to\! f$ and $c\!\to\!1$.
+\item Prop.~\ref{prop:c-star} provides a one-line, data-driven tuning of $c$ that is trivial to implement and adapts to encoder quality.
+\end{enumerate}
+\end{remark}
+
+\paragraph{Setup.}
+Fix $\bt_0$ and a data point $y$. Let $f(\cdot)=f_{\Z\mid Y;\,\bt_0}(\cdot\mid y)$ be the true posterior
+and $q(\cdot)=q_{\Z\mid Y;\,\bt_0}(\cdot\mid y)$ its approximation.
+Recall
+\[
+\Delta_m(y) \;=\; m_q(y;\bt_0)-m(y;\bt_0)
+= \E_q\!\big[D(\Z,\bt_0)^\top\big]\,T(y)\;-\;\E_f\!\big[D(\Z,\bt_0)^\top\big]\,T(y),
+\]
+\[
+\Delta_b(y) \;=\; b_q(y;\bt_0)-b(y;\bt_0)
+= \E_q\!\big[D(\Z,\bt_0)^\top \mu(\Z;\bt_0)\big]\;-\;\E_f\!\big[D(\Z,\bt_0)^\top \mu(\Z;\bt_0)\big].
+\]
+Thus the perturbation that enters $\widetilde M_c$ is
+\[
+e_c(y) \;:=\; \Delta_m(y) - c\,\Delta_b(y)
+= \big(\E_q-\E_f\big)\!\left[\,H_c(\Z;y)\,\right],\qquad 
+H_c(\z;y):= D(\z,\bt_0)^\top\!\left(T(y)-c\,\mu(\z;\bt_0)\right).
+\]
+From Prop.~\textup{\ref{prop:jacobian-identifiability-c}}, 
+\[
+\widetilde M_c \;=\; I^{-1/2}\,\E_Y\!\left[\,e_c(Y)\,s(\bt_0;Y)^\top\,\right]\,I^{-1/2},
+\quad\Rightarrow\quad
+\|\widetilde M_c\|_{\op} \;\le\; \Big(\E\|I^{-1/2}s\|_2^2\Big)^{1/2}\,\Big(\E\|e_c(Y)\|_2^2\Big)^{1/2}
+= \Big(\E\|e_c(Y)\|_2^2\Big)^{1/2}.
+\]
+Hence it suffices to bound $\|e_c(Y)\|$ by the divergence between $q$ and $f$ \emph{(posterior, given $Y$)} and then average over $Y$.
+\medskip
+
+\paragraph{Regime A: Bounded integrands (Pinsker).}
+Assume that for each $y$, $H_c(\cdot;y)$ is bounded with $\|H_c(\cdot;y)\|_{\infty}\le M_c(y)$. Then by Pinsker,
+\[
+\Big\|\big(\E_q-\E_f\big)[H_c(\Z;y)]\Big\|_2 \;\le\; 2\,M_c(y)\, \mathrm{TV}(q,f)
+\;\le\; \sqrt{2}\,M_c(y)\,\sqrt{ \mathrm{KL}(q\|f)}.
+\]
+Consequently,
+\[
+\boxed{\quad
+\|\widetilde M_c\|_{\op} \;\le\; 
+\sqrt{2}\,\Big( \E\big[\,M_c(Y)^2\,\mathrm{KL}\big(q_{\Z|Y;\bt_0}\,\|\,f_{\Z|Y;\bt_0}\big)\,\big]\Big)^{1/2}.
+\quad}
+\]
+A simple sufficient condition is to have $\|D(\z,\bt_0)\|\le L_D$, $\|\mu(\z;\bt_0)\|\le L_\mu$, and $\|T(y)\|\le L_T$ uniformly, which yields $M_c(y)\le L_D\,(L_T + c\,L_\mu)$.
+
+\paragraph{Regime B: Smooth integrands + transport (Talagrand).}
+Suppose the true posterior $f(\cdot\mid y)$ satisfies a T$_2$ (Talagrand) inequality with constant $C_y>0$
+(e.g., log-concave posteriors, Gaussians, or distributions under a log-Sobolev inequality). 
+If $H_c(\cdot;y)$ is $L_c(y)$-Lipschitz in $\z$, then
+\[
+\Big\|\big(\E_q-\E_f\big)[H_c(\Z;y)]\Big\|_2 \;\le\; L_c(y)\, W_1(q,f) \;\le\; L_c(y)\, W_2(q,f)
+\;\le\; L_c(y)\,\sqrt{2\,C_y\,\mathrm{KL}(q\|f)}.
+\]
+Therefore,
+\[
+\boxed{\quad
+\|\widetilde M_c\|_{\op} \;\le\; 
+\Big(\E\big[\, 2\,C_Y\,L_c(Y)^2\,\mathrm{KL}\big(q_{\Z|Y;\bt_0}\,\|\,f_{\Z|Y;\bt_0}\big)\,\big]\Big)^{1/2}.
+\quad}
+\]
+In exponential families, $H_c(\z;y)=D(\z)^\top T(y)-c\,D(\z)^\top\mu(\z)$ is Lipschitz if $D$ and $\mu$ are; a common sufficient condition is that $\eta(\z,\bt_0)$ is smooth in $\z$ with bounded Jacobian and Hessian so that both $D(\z)$ and $\nabla_\z\mu(\z)$ are bounded.
+
+\paragraph{Regime C: Variance-controlled integrands (chi-square).}
+For square-integrable $H_c(\cdot;y)$ (not necessarily bounded), write 
+$L(\z)=\frac{dq}{df}(\z)$ and note
+\[
+\big(\E_q-\E_f\big)[H_c] \;=\; \E_f\!\big[(L-1)H_c\big]
+\ \Rightarrow\ 
+\Big\|\big(\E_q-\E_f\big)[H_c]\Big\|_2 \;\le\; \sqrt{\Var_f(H_c)}\,\sqrt{\chi^2(q\|f)}.
+\]
+Averaging over $Y$ gives
+\[
+\boxed{\quad
+\|\widetilde M_c\|_{\op} \;\le\; 
+\Big(\E\big[\,\Var_{f_{\Z|Y}}(H_c(\Z;Y))\;\chi^2\big(q_{\Z|Y}\,\|\,f_{\Z|Y}\big)\,\big]\Big)^{1/2}.
+\quad}
+\]
+If you prefer KL, recall the (one-sided) comparison 
+$\chi^2(q\|f)\;\le\; \exp\!\big( \mathrm{KL}(q\|f)\big)-1$ \emph{when the likelihood ratio is essentially bounded}; this yields the softer bound
+\[
+\|\widetilde M_c\|_{\op} \;\lesssim\; 
+\Big(\E\big[\,\Var_{f_{\Z|Y}}(H_c)\,\{\exp(\mathrm{KL})-1\}\,\big]\Big)^{1/2}.
+\]
+\emph{(Without additional assumptions, $\chi^2$ cannot be upper-bounded by KL in general.)}
+\medskip
+
+\paragraph{Takeaway.}
+In all three regimes,
+\[
+\boxed{\ \ \|\widetilde M_c\|_{\op} \;=\; \mathcal O\!\Big(\sqrt{\E\big[\mathrm{KL}(q_{\Z|Y;\bt_0}\,\|\,f_{\Z|Y;\bt_0})\big]}\ \Big)
+\ \times\ \text{(model-dependent constants from }H_c).\ }
+\]
+Therefore, if the posterior KL (averaged over $Y$) $\to 0$, then $\|\widetilde M_c\|_{\op}\to 0$, and your Jacobian
+\[
+A_c(\bt_0)\;=\;-\,I^{1/2}\big(I+\widetilde M_c\big)\,I^{1/2}
+\]
+remains invertible once the KL is small enough, with an identifiability margin that shrinks at the $\sqrt{\text{KL}}$ rate up to the constants above.

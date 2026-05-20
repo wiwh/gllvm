@@ -1,0 +1,97 @@
+\section{Exact posterior is better}
+
+\paragraph{Short answer.}
+Using the \emph{true} posterior improves your estimator because it makes
+\[
+m^\star_{\bt_0}(Y)\;\vcentcolon=\;\E\!\big[D(Z,\bt_0)^\top T(Y)\mid Y\big]
+\]
+the \emph{orthogonal $L^2$–projection} of the complete–data score–like term
+\(X(Z,Y)\vcentcolon=D(Z,\bt_0)^\top T(Y)\) onto the $\sigma(Y)$–measurable functions.
+Any approximate posterior $q$ produces some other function \(m^q_{\bt_0}(Y)\), and the
+gap \(\delta(Y)\vcentcolon=m^q_{\bt_0}(Y)-m^\star_{\bt_0}(Y)\) is an \emph{avoidable} noise you
+inject when $q\neq f_{Z\mid Y;\bt_0}\). This gap directly perturbs both the bread and the meat, and hence your sandwich variance. As $q\to f_{Z\mid Y;\bt_0}$ in $L^2(P_Y)$, these perturbations vanish continuously.
+
+\paragraph{Clean algebra showing what you gain.}
+Fix $\bt_0$ and write, for any choice of $q$,
+\[
+m^q_{\bt_0}=m^\star_{\bt_0}+\delta,\qquad
+\psi^q_{\bt_0}=m^q_{\bt_0}-\E[m^q_{\bt_0}],\qquad
+s_0=s(\bt_0;Y).
+\]
+Then with symmetric centering the usual identities give
+\[
+A_q \;=\; -\,\E[m^q_{\bt_0}\,s_0^\top] \;=\; A^\star \;-\; \underbrace{\E[\delta\,s_0^\top]}_{\text{bread perturbation}},
+\qquad
+B_q \;=\; \Var(m^q_{\bt_0})
+\;=\; B^\star \;+\; \underbrace{\Var(\delta)+2\,\Cov(m^\star_{\bt_0},\delta)}_{\text{meat perturbation}},
+\]
+where \(A^\star=-\,\E[m^\star_{\bt_0}s_0^\top]\) and \(B^\star=\Var(m^\star_{\bt_0})\) are the
+“oracle” bread/meat you would get with the \emph{true} posterior.
+
+\paragraph{Orthogonality (why the true posterior is special).}
+Because \(m^\star_{\bt_0}(Y)=\E[X\mid Y]\) is the $L^2$–projection of \(X\) onto
+functions of \(Y\), the residual \(R\!\vcentcolon=X-m^\star_{\bt_0}(Y)\) satisfies
+\[
+\E\!\big[R\,g(Y)^\top\big]=0\quad\text{for every square–integrable }g(Y).
+\]
+In particular, taking \(g(Y)=s_0(Y)\) yields
+\[
+\E\!\big[X\,s_0^\top\big]\;=\;\E\!\big[m^\star_{\bt_0}(Y)\,s_0^\top\big],
+\]
+so $A^\star=-\,\E[X\,s_0^\top]$ is the \emph{canonical} bread associated with the complete–data building block \(X\). Any deviation \(m^q_{\bt_0}\) adds the explicit error term \(-\E[\delta\,s_0^\top]\) to the bread and \(\Var(\delta)+2\Cov(m^\star_{\bt_0},\delta)\) to the meat.
+
+\paragraph{Continuity bounds (closeness to the true posterior $\Rightarrow$ better performance).}
+Normalize by Fisher: write $\widetilde A=I^{-1/2}AI^{-1/2}$, $\widetilde B=I^{-1/2}BI^{-1/2}$, and define $\tilde s_0=I^{-1/2}s_0$, $\tilde\delta=I^{-1/2}\delta$, $\tilde m^\star=I^{-1/2}m^\star_{\bt_0}$.
+Then by Cauchy–Schwarz,
+\begin{align*}
+\|\widetilde A_q-\widetilde A^\star\|_{\op}
+&=\Big\|\,\E[\tilde\delta\,\tilde s_0^\top]\,\Big\|_{\op}
+\;\le\;\big(\E\|\tilde\delta\|^2\big)^{1/2}\,\big(\E\|\tilde s_0\|^2\big)^{1/2}
+\;=\;\sqrt{r}\;\|\tilde\delta\|_{L^2},\\[3pt]
+\|\widetilde B_q-\widetilde B^\star\|_{\op}
+&\le\;\underbrace{\E\|\tilde\delta\|^2}_{=\;\|\tilde\delta\|_{L^2}^2}
+\;+\;2\,\big(\E\|\tilde m^\star\|^2\big)^{1/2}\,\|\tilde\delta\|_{L^2}.
+\end{align*}
+Thus \(\widetilde A_q\to\widetilde A^\star\) and \(\widetilde B_q\to\widetilde B^\star\) as $\|\tilde\delta\|_{L^2}\to0$.
+By smoothness of matrix inversion on nonsingular sets, the sandwich variance
+\(\Sigma_q=A_q^{-1}B_qA_q^{-\top}\) converges to the oracle \(\Sigma^\star\) as $q\to f_{Z\mid Y;\bt_0}$ in $L^2(P_Y)$.
+Practically: \emph{the closer your VI posterior is to the truth (in $L^2$ on $Y$), the closer your asymptotics are to the oracle one.}
+
+\paragraph{Spectral identifiability improves with the true posterior.}
+Your invertibility condition uses
+\[
+A_q=-I^{1/2}\big(I+\widetilde M_q\big)I^{1/2},\qquad
+\widetilde M_q=I^{-1/2}\E[b^q_{\bt_0}\,s_0^\top]\,I^{-1/2},\quad b^q_{\bt_0}=m^q_{\bt_0}-s_0.
+\]
+Since \(b^q_{\bt_0}=b^\star_{\bt_0}+\delta\), we have
+\(\widetilde M_q=\widetilde M^\star+\E[\tilde\delta\,\tilde s_0^\top]\).
+Hence
+\[
+\|\widetilde M_q\|_{\op}
+\;\le\;\|\widetilde M^\star\|_{\op}\;+\;\sqrt{r}\,\|\tilde\delta\|_{L^2}.
+\]
+If \(q=f_{Z\mid Y;\bt_0}\) then $\delta\equiv0$, and you are at the (oracle) baseline
+\(\|\widetilde M^\star\|_{\op}\). Any posterior misspecification enlarges $\|\widetilde M_q\|_{\op}$ by a term controlled by $\|\delta\|$, making the spectral condition $\|\widetilde M_q\|_{\op}<1$ harder to satisfy. So the true posterior \emph{maximizes the margin to the identifiability boundary} within your construction.
+
+\paragraph{Intuition in one line.}
+With the true posterior you set \(m_{\bt_0}(Y)=\E[X\mid Y]\), the best (orthogonal–projection) predictor of the complete–data object \(X=D^\top T\) from $Y$. Any other $q$ adds a predictable error $\delta(Y)$; this error (i) tilts the bread via $\E[\delta s^\top]$, (ii) inflates the meat by \(\Var(\delta)+2\Cov(m^\star,\delta)\), and (iii) pushes your spectral identifiability statistic $\|\widetilde M\|_{\op}$ upward. Driving $q$ closer to the true posterior shrinks $\delta$, and \emph{all} these degradations shrink continuously.
+
+\paragraph{What you can state in the paper.}
+\begin{quote}
+\emph{Let $m^\star_{\bt_0}(Y)=\E[D(Z,\bt_0)^\top T(Y)\mid Y]$ be the oracle (true posterior) map
+and $m^q_{\bt_0}(Y)$ the map induced by an approximate posterior $q$. Setting $\delta=m^q_{\bt_0}-m^\star_{\bt_0}$, we have}
+\[
+\widetilde A_q=\widetilde A^\star-\E[\tilde\delta\,\tilde s_0^\top],\qquad
+\widetilde B_q=\widetilde B^\star + \Var(\tilde\delta)+2\,\Cov(\tilde m^\star,\tilde\delta).
+\]
+\emph{Hence for any VI family,}
+\[
+\|\widetilde A_q-\widetilde A^\star\|_{\op}\le \sqrt{r}\,\|\tilde\delta\|_{L^2},
+\quad
+\|\widetilde B_q-\widetilde B^\star\|_{\op}\le \|\tilde\delta\|_{L^2}^2 + 2\|\tilde m^\star\|_{L^2}\,\|\tilde\delta\|_{L^2}.
+\]
+\emph{As $\|\tilde\delta\|_{L^2}\to0$ (i.e., $q\to f_{Z\mid Y;\bt_0}$), the sandwich variance $\Sigma_q$ converges to the oracle $\Sigma^\star$ and the identifiability statistic $\|\widetilde M_q\|_{\op}$ converges to $\|\widetilde M^\star\|_{\op}$.}
+\end{quote}
+
+\paragraph{Takeaway.}
+Yes — “closer posterior $\Rightarrow$ better” is (i) \emph{analytically visible} through the explicit $\delta$–perturbations of bread/meat and (ii) \emph{quantitatively controllable} via simple $L^2$ bounds after Fisher normalization. The true posterior is the \emph{projection baseline}; any approximation adds a function–of–$Y$ error that directly and continuously degrades identifiability and efficiency.

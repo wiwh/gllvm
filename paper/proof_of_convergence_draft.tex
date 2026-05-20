@@ -1,0 +1,91 @@
+\documentclass[twoside,11pt]{article}
+
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+\usepackage{jmlr2e}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{preamble}
+
+
+% todo
+ \setlength {\marginparwidth }{2cm} % TODO: REMOVE THAT later
+\usepackage{todonotes}
+\definecolor{lightred}{RGB}{120,60,60}
+\definecolor{darkred}{RGB}{255,0,0}
+\newcommand{\proofread}[1]{{\color{lightred}#1}}
+\newcommand{\rewrite}[2]{{\color{darkred}#1}}
+\newcommand{\R}{\mathbb{R}}
+
+\definecolor{gbcolor}{RGB}{220, 160, 180}
+\newcommand{\gb}[2][]{\todo[color=gbcolor, caption={GB}, #1]{#2}}
+\definecolor{jbcolor}{RGB}{180, 220, 200}
+\newcommand{\jb}[2][]{\todo[color=jbcolor, caption={JB}, #1]{#2}}
+\definecolor{bpcolor}{RGB}{255, 215, 0}
+\newcommand{\bp}[2][]{\todo[color=bpcolor, caption={JB}, #1]{#2}}
+
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+\begin{document}
+\subsection*{Model (hope I got it right)}
+Consider $Y$ and $Z$ two random variables taking values in $\R^p$ and $\R^q$ respectively, such that
+$$Z\sim \pi_Z\,\,\text{ and }\,\,\forall j \in \{1, \ldots, p\}, \,\, Y_j \mid Z = \boldsymbol{z} \, \sim f_j$$
+where $f_j$ is a distribution belonging to the exponential family with expectation 
+$$ \mu_j(z, \theta) = g^{-1}(\eta(z, \theta))$$
+where $g$ is a link function from $\R$ to $\R$, $\theta$ is a non-random parameter in $\Theta \subset \R ^r$ and $\eta$ is a function from $\R^p \times \R^r$ to $\R$. Call  $V_j(z, \theta)$ the variance of $Y_j \mid Z = z$.  
+Assume that conditionally on $Z = z$, $Y_j$ and $Y_{j'}$ are independent for $j \neq j'$ in $\{1, \ldots, p\}$.
+
+Call  $\boldsymbol{\mu} : z, \theta \mapsto \left(\mu_1(z, \theta), \ldots, \mu_p(z, \theta)\right)^T$ the vector expectation of $Y$ and 
+and $\boldsymbol{V}(z, \theta) \in \R^{p \times p}$ the covariance matrix of $Y$, which has diagonal elements $V_1(z, \theta), \ldots, V_p(z, \theta)$ and zeros elsewhere. 
+
+Then given $n$ i.i.d. realizations of $(Y, Z)$, $(\boldsymbol{y}_1, \boldsymbol{z}_1), \ldots, (\boldsymbol{y}_n, \boldsymbol{z}_n)$, the maximum likelihood estimator of $\boldsymbol{\theta}$ is given by
+$$ \sum_{i = 1} ^ n \left(\frac{\partial \mu(\boldsymbol{z}_i, \theta)}{\partial \theta}\right)^T\boldsymbol{V}(\boldsymbol{z}_i, \theta)^{-1} \left(\boldsymbol{y}_i - \mu(\boldsymbol{z}_i, \theta)\right) = 0 \, . $$
+As $\boldsymbol{z}_i$ are unobserved and marginalization with respect to $Z$ is expensive, we consider the estimator defined as the solution in $\theta$ of :
+$$
+\sum_{i = 1} ^ n U(\boldsymbol{y}_i, \theta) - \mathbb{E}\left[U(Y, \theta) \right] \boldsymbol = 0 \, .
+$$
+where $U(\boldsymbol{y}, \boldsymbol{\theta}) = D(e_i ^T\boldsymbol{V}(e(y_i, \theta), \theta)^{-1} y_i$
+where $\boldsymbol{\alpha}(\theta) = \E\left[
+\left(\frac{\partial \mu(e(Y, \theta), \theta)}{\partial \theta}\right)^T\boldsymbol{V}(e(Y, \theta), \theta)^{-1} Y
+\right]$.
+This corresponds to a Fisher consistent M-estimator.
+
+
+\subsection*{conditions for consistency}
+
+If : 
+\begin{enumerate}
+    \item There is only one $\hat\theta$ such that $
+\sum_{i = 1} ^ n U(z_i, y_i, \theta) - \boldsymbol{\alpha}(\theta) = 0 \, .
+$\item the function $\theta \mapsto  U(z, y, \theta) - \boldsymbol{\alpha}(\theta)$ is continuous for all $y, z$,
+\end{enumerate}
+ then $\hat\theta \cp \theta_0$. (asymptotic statistics, Van der Vaart, Lemma 5.10, p47)
+ 
+ \subsection{conditions for convergence rate}
+Assume, in addition that
+\begin{enumerate}
+    \item $\theta \mapsto U(y, \theta) - \alpha(\theta)$ is $\mathcal{C}^1$ in a neighbourhood $V_{\theta_0}$ of $\theta_0$, and that $\sup_{V_{\theta_0}}(\Vert\frac{\partial{U(Y, \theta) }}{\partial{ \theta  }}\Vert)$ has finite variance.
+    \item The matrix $\frac{\partial U(y, \theta) - \alpha(\theta)}{\partial \theta}$ is non singular in $\theta_0$.
+\end{enumerate}
+Then, we have the central limit theorem for $\hat\theta$ with the sandwich covariance matrix. 
+(Van der Vaart Theorem 5.21 p.52)
+ 
+
+
+
+
+
+
+
+\end{document}

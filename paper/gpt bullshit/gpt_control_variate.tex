@@ -1,0 +1,628 @@
+\section{Control variates}
+
+\paragraph{Set-up (two posterior expectations).}
+Let
+\[
+m_{1,\bt}(y)\;\vcentcolon=\;\E_{q_\bt(z\mid y)}\!\big[D(z,\bt)^\top T(y)\big],
+\qquad
+m_{2,\bt}(y)\;\vcentcolon=\;\E_{q_\bt(z\mid y)}\!\big[D(z,\bt)^\top \mu_\bt(z)\big].
+\]
+Your current estimator uses the \emph{symmetrically centered} first term:
+\[
+\psi_\bt^{(0)}(y)\;=\;m_{1,\bt}(y)\;-\;\E_{f_{Y;\bt}}\!\big[m_{1,\bt}(Y)\big].
+\]
+
+\paragraph{Control–variate extension (no score needed).}
+Add the centered “second part’’ with a scalar (or matrix) coefficient \(c\):
+\[
+\boxed{\quad
+\psi_\bt^{(c)}(y)\;=\;\big(m_{1,\bt}(y)\;-\;\E_\bt[m_{1,\bt}(Y)]\big)\;+\;c\,\big(m_{2,\bt}(y)\;-\;\E_\bt[m_{2,\bt}(Y)]\big).
+\quad}
+\]
+This remains a valid $Z$–estimating function for any \(c\), because we center each
+term by its \(\bt\)-marginal expectation under \(f_{Y;\bt}\). Importantly, all the
+\(\nabla_\bt\) terms \emph{still cancel} in the bread.
+
+\paragraph{Bread \& meat for general \(q\).}
+Let \(s(\bt;Y)=\nabla_\bt\log f_{Y;\bt}(Y)\).
+Then, by the score trick applied to \(f_{Y;\bt}\),
+\[
+A_c(\bt_0)\;\vcentcolon=\;\E[\nabla_\bt \psi_\bt^{(c)}(Y)]\big|_{\bt_0}
+\;=\;-\E\!\big[\,\underbrace{(m_{1,\bt_0}+c\,m_{2,\bt_0})(Y)}_{\text{a forward pass through the encoder}}\,s(\bt_0;Y)^\top\big],
+\]
+\[
+B_c(\bt_0)\;=\;\Var\!\big(m_{1,\bt_0}(Y)+c\,m_{2,\bt_0}(Y)\big).
+\]
+No score derivatives, no encoder derivatives.
+
+\paragraph{Under the \emph{true} posterior (for intuition).}
+When \(q_\bt=f_{Z\mid Y;\bt}\) (exp–fam), we have the identities
+\[
+m_{1,\bt_0}(Y)=s(\bt_0;Y)+b_{\bt_0}(Y),\qquad m_{2,\bt_0}(Y)=b_{\bt_0}(Y),
+\]
+with \(I(\bt_0)=\Var(s)\), \(M=\E[b_{\bt_0}s^\top]\), \(\Sigma_{bb}=\Var(b_{\bt_0})\).
+Then
+\[
+m_{1,\bt_0}+c\,m_{2,\bt_0}\;=\;s\;+\;(1+c)\,b_{\bt_0},
+\]
+so
+\[
+\boxed{\quad
+A_c(\bt_0)=-I(\bt_0)-(1+c)M,\qquad
+B_c(\bt_0)=I(\bt_0)+2(1+c)M+(1+c)^2\Sigma_{bb}.
+\quad}
+\]
+Normalized bread:
+\[
+A_c(\bt_0)\;=\;-\,I^{1/2}\!\big(I+(1+c)\,\widetilde M\big)I^{1/2},\qquad
+\widetilde M=I^{-1/2}MI^{-1/2}.
+\]
+
+\paragraph{Choice of \(c\): why \(\boldsymbol{c=-1}\) is special (and \(\boldsymbol{c=1}\) is risky).}
+\begin{itemize}
+\item \emph{Take \(c=-1\).} Then \(m_{1,\bt_0}-m_{2,\bt_0}=s\) (with the true posterior),
+\[
+A_{-1}(\bt_0)=-I(\bt_0),\qquad B_{-1}(\bt_0)=I(\bt_0),
+\]
+so the estimating equations reduce \emph{exactly} to the MLE score equations; with approximate posteriors \(q\), you still get a \emph{pseudo-score} \(m_{1,\bt}-m_{2,\bt}\) that keeps the bread close to \(-I\) when \(q\) is reasonable.
+\item \emph{Take \(c=1\).} Then \(A_{1}(\bt_0)=-I(\bt_0)-2M\) and the identifiability condition becomes
+\[
+I+(1+c)\,\widetilde M\,=\,I+2\,\widetilde M\ \text{invertible}\quad\Longleftrightarrow\quad -1\notin\sigma(2\widetilde M),
+\]
+e.g.\ a sufficient condition is \(\|2\widetilde M\|_{\op}<1\), which is \emph{strictly stronger} than the baseline \(\|\widetilde M\|_{\op}<1\). In other words, \(c=1\) \emph{shrinks the identifiability margin} and can render the bread singular even when your baseline (no control variate) was fine.
+\end{itemize}
+
+\paragraph{You don’t have the score — is \(c=-1\) still implementable?}
+Yes. You never compute \(s\). You only need the two \emph{encoder} expectations:
+\[
+m_{1,\bt}(y)=\E_{q_\bt}[D^\top T(y)],\qquad m_{2,\bt}(y)=\E_{q_\bt}[D^\top \mu_\bt(z)].
+\]
+Set
+\[
+\boxed{\quad \psi_\bt^{(-1)}(y)\;=\;\big(m_{1,\bt}(y)-m_{2,\bt}(y)\big)\;-\;\E_\bt\big[m_{1,\bt}(Y)-m_{2,\bt}(Y)\big].\quad}
+\]
+Under the true posterior, this \emph{is} the MLE score (centered); under an approximate posterior it is a pseudo-score that (i) keeps the bread near \(-I\), (ii) removes the cross-term in the meat at the oracle, and (iii) needs only forward encoder evaluations.
+
+\paragraph{If you insist on estimating a scalar \(c\) from data (no score).}
+You can choose \(c\) to reduce the \emph{meat} (variance) of the estimating function, ignoring the bread (to keep things score-free):
+\[
+c_{\text{meat}}^\star\;=\;\arg\min_c\ \Var\big(m_{1,\bt_0}(Y)+c\,m_{2,\bt_0}(Y)\big)
+\;=\;-\frac{\Cov(m_{1,\bt_0},m_{2,\bt_0})}{\Var(m_{2,\bt_0})},
+\]
+estimable by plug-in. To protect identifiability, clip toward \(-1\) (e.g.\ \(c=\max\{-1,\,c_{\text{meat}}^\star\}\)), since \(c\) too far above \(-1\) enlarges \(|1+c|\) and tightens the spectral condition on \(I+(1+c)\widetilde M\).
+
+\paragraph{Bottom line.}
+- The control–variate upgrade is
+\[
+\psi_\bt^{(c)}(y)=(m_{1,\bt}-\E m_{1,\bt})+c\,(m_{2,\bt}-\E m_{2,\bt}).
+\]
+- \(\mathbf{c=-1}\) is the principled default: it \emph{recovers the MLE equations} under the true posterior and maximizes identifiability robustness without ever computing the score.
+- \(\mathbf{c=1}\) is generally \emph{not} advisable: it tightens the invertibility condition and can harm identifiability and variance.
+- If desired, learn \(c\) from data by minimizing the empirical variance of \(m_{1}+c\,m_{2}\), but keep it near \(-1\) (or clip) to preserve a healthy identifiability margin.
+
+
+\subsection{\paragraph{Notation.}
+Let
+\[
+m_{1,\bt}(y)\;\vcentcolon=\;\E_{q_\bt(z\mid y)}\!\big[D(z,\bt)^\top T(y)\big],
+\qquad
+m_{2,\bt}(y)\;\vcentcolon=\;\E_{q_\bt(z\mid y)}\!\big[D(z,\bt)^\top \mu_\bt(z)\big],
+\]
+and define the control–variate estimating function (symmetric centering)
+\[
+\psi_\bt^{(c)}(y)\;=\;\big(m_{1,\bt}(y)+c\,m_{2,\bt}(y)\big)\;-\;\E_{f_{Y;\bt}}\!\big[m_{1,\bt}(Y)+c\,m_{2,\bt}(Y)\big].
+\]
+Write \(s(\bt;Y)=\nabla_\bt\log f_{Y;\bt}(Y)\) and assume \(I(\bt_0)\vcentcolon=\Var(s(\bt_0;Y))\succ0\).
+
+\paragraph{Bread for any \(c\).}
+By the score–trick applied to the \emph{outer} law \(f_{Y;\bt}\),
+\[
+A_c(\bt_0)
+\;\vcentcolon=\;\E\!\big[\nabla_\bt \psi_\bt^{(c)}(Y)\big]_{\bt_0}
+= -\,\E\!\big[\underbrace{(m_{1,\bt_0}+c\,m_{2,\bt_0})(Y)}_{\text{encoder forward only}}\,s(\bt_0;Y)^\top\big].
+\]
+Define the (Fisher–normalized) perturbation
+\[
+\widetilde M_c\;\vcentcolon=\;I(\bt_0)^{-1/2}\,\E\!\big[(m_{1,\bt_0}+c\,m_{2,\bt_0}-s(\bt_0;Y))\,s(\bt_0;Y)^\top\big]\,I(\bt_0)^{-1/2},
+\]
+so that
+\[
+\boxed{\quad
+A_c(\bt_0)\;=\;-\,I(\bt_0)^{1/2}\,\big(I+\widetilde M_c\big)\,I(\bt_0)^{1/2}.
+\quad}
+\]
+
+\paragraph{Identifiability condition (general \(q\)).}
+\[
+\boxed{\quad
+A_c(\bt_0)\ \text{invertible}
+\ \Longleftrightarrow\ 
+I+\widetilde M_c\ \text{invertible}
+\ \Longleftrightarrow\ 
+-1\notin \sigma(\widetilde M_c).
+\quad}
+\]
+Two convenient sufficient criteria:
+\[
+\|\widetilde M_c\|_{\mathrm{op}}<1
+\qquad\text{or}\qquad
+\lambda_{\min}\!\big(I+\Sym(\widetilde M_c)\big)>0,
+\]
+where \(\Sym(X)=(X+X^\top)/2\).
+
+\paragraph{Specialization under the \emph{true} posterior (exp–fam).}
+When \(q_\bt=f_{Z\mid Y;\bt}\) in an exponential family, one has
+\[
+m_{1,\bt_0}=s(\bt_0;\cdot)+b_{\bt_0},\qquad m_{2,\bt_0}=b_{\bt_0},
+\qquad M\vcentcolon=\E[b_{\bt_0}s(\bt_0;Y)^\top].
+\]
+Hence
+\[
+\widetilde M_c=(1+c)\,\widetilde M,\qquad \widetilde M=I^{-1/2}MI^{-1/2},
+\]
+and
+\[
+A_c(\bt_0)=-\,I^{1/2}\big(I+(1+c)\widetilde M\big)I^{1/2}.
+\]
+Therefore
+\[
+\boxed{\quad
+A_c(\bt_0)\ \text{invertible}
+\ \Longleftrightarrow\ 
+-\,\frac{1}{\,1+c\,}\notin \sigma(\widetilde M)
+\quad(\text{with the convention: if }1+c=0,\ \text{always invertible}).
+\quad}
+\]
+A simple sufficient condition is
+\[
+\boxed{\quad
+|(1+c)|\,\|\widetilde M\|_{\mathrm{op}}<1.
+\quad}
+\]
+
+\paragraph{Implications for particular \(c\).}
+\begin{itemize}
+\item \(\boldsymbol{c=-1}\) \textbf{(pseudo-score choice).} Here \(1+c=0\), so
+\[
+A_{-1}(\bt_0)=-\,I(\bt_0)\quad\text{and}\quad I+\widetilde M_{-1}=I.
+\]
+\emph{Identifiability is guaranteed} (no spectral restriction beyond \(I(\bt_0)\succ0\)).  
+This is the \emph{least stringent} requirement and the most robust choice for invertibility.
+\item \(\boldsymbol{c=0}\) \textbf{(baseline).} Condition: \(\|\widetilde M\|_{\mathrm{op}}<1\).
+\item \(\boldsymbol{c=1}\) \textbf{(aggressive use of the second term).} Condition: \(\|2\widetilde M\|_{\mathrm{op}}<1\), i.e. \(\|\widetilde M\|_{\mathrm{op}}<\tfrac12\).  
+This is \emph{strictly more demanding} than the baseline and can jeopardize invertibility.
+\end{itemize}
+
+\paragraph{Clarification of the “strength” of the requirement.}
+“Stronger requirement” means a \emph{tighter} condition to ensure invertibility.  
+By the bound \( |1+c|\,\|\widetilde M\|_{\mathrm{op}}<1\), moving \(c\) away from \(-1\) (increasing \(|1+c|\)) makes the sufficient condition \emph{harder} to satisfy.  
+Thus:
+\[
+\text{invertibility margin improves as } c\to -1,\quad
+\text{and worsens as } |1+c| \uparrow .
+\]
+In particular, \(c=-1\) imposes the \emph{weakest} requirement (indeed, no requirement on \(\widetilde M\) at all), while \(c=1\) imposes the \emph{strongest} among \(\{-1,0,1\}\).
+
+\paragraph{Away from the true posterior (general \(q\)).}
+Define \(M^{(1)}=\E[(m_{1,\bt_0}-s)s^\top]\), \(M^{(2)}=\E[m_{2,\bt_0}s^\top]\), and
+\(\widetilde M^{(j)}=I^{-1/2}M^{(j)}I^{-1/2}\). Then
+\[
+\widetilde M_c=\widetilde M^{(1)}+c\,\widetilde M^{(2)},
+\]
+so a convenient sufficient condition is
+\[
+\|\widetilde M_c\|_{\op}\ \le\ \|\widetilde M^{(1)}\|_{\op}+|c|\,\|\widetilde M^{(2)}\|_{\op}\ <\ 1.
+\]
+If \(q\) is close to the true posterior, \(\widetilde M^{(1)}\approx \widetilde M^{(2)}\), and \(c=-1\) tends to \emph{shrink} \(\|\widetilde M_c\|\), again enlarging the identifiability margin.
+}
+
+
+\paragraph{Short answer.}
+The \emph{number of algebraic terms} in the estimating equation does \textbf{not}
+govern (local) uniqueness. What governs it is the \emph{Jacobian} (the bread)
+\[
+A_c(\bt_0)\;=\;\E\!\big[\nabla_\bt \psi_\bt^{(c)}(Y)\big]\Big|_{\bt_0}
+\;=\;-\;\E\!\big[(m_{1,\bt_0}+c\,m_{2,\bt_0})(Y)\,s(\bt_0;Y)^\top\big].
+\]
+If \(A_c(\bt_0)\) is nonsingular, then by the inverse–function theorem there is a
+neighborhood of \(\bt_0\) with a \emph{unique} root—regardless of how many
+“cancellable pieces’’ appear in the sample equations. Multiple nearby roots in
+practice indicate that \(A_c(\bt_0)\) is \emph{singular or nearly singular}
+for the chosen \(c\) and encoder \(q\), not that the four-term decomposition
+itself creates extra degrees of freedom.
+
+\paragraph{What the theory says (and why \(c=-1\) is \emph{most} robust).}
+Work with the symmetrically centered control–variate family
+\[
+\psi_\bt^{(c)}(y)
+=\big(m_{1,\bt}(y)+c\,m_{2,\bt}(y)\big)\;-\;\E_{f_{Y;\bt}}\!\big[m_{1,\bt}(Y)+c\,m_{2,\bt}(Y)\big].
+\]
+Define the Fisher–normalized perturbation
+\[
+\widetilde M_c
+\;\vcentcolon=\;
+I(\bt_0)^{-1/2}\,\E\!\big[(m_{1,\bt_0}+c\,m_{2,\bt_0}-s(\bt_0;Y))\,s(\bt_0;Y)^\top\big]\,
+I(\bt_0)^{-1/2}.
+\]
+Then
+\[
+A_c(\bt_0)=-\,I(\bt_0)^{1/2}\big(I+\widetilde M_c\big)I(\bt_0)^{1/2},
+\qquad
+\text{so}\quad
+A_c(\bt_0)\ \text{invertible}\ \Longleftrightarrow\ I+\widetilde M_c\ \text{invertible}.
+\]
+A convenient sufficient condition is \(\|\widetilde M_c\|_{\op}<1\).
+
+\emph{Under the \textbf{true} posterior} (exponential family) we have
+\(m_{1,\bt_0}=s_{\bt_0}+b_{\bt_0}\), \(m_{2,\bt_0}=b_{\bt_0}\),
+hence \(\widetilde M_c=(1+c)\,\widetilde M\) and
+\[
+A_c(\bt_0)=-\,I^{1/2}\big(I+(1+c)\widetilde M\big)I^{1/2}.
+\]
+Thus:
+\[
+\boxed{\
+|(1+c)|\,\|\widetilde M\|_{\op}<1\ \Longrightarrow\ A_c(\bt_0)\ \text{invertible}.
+}
+\]
+This immediately shows the ordering:
+\[
+\text{as }c\to -1,\quad |1+c|\downarrow 0\quad\Rightarrow\quad
+\text{the sufficient condition \emph{weakens} (easiest to satisfy).}
+\]
+At \(c=-1\) and the true posterior, \(\widetilde M_{-1}=0\) and
+\(\boxed{A_{-1}(\bt_0)=-I(\bt_0)}\): \emph{maximally robust} local
+identification. For \(c=0\) you require \(\|\widetilde M\|_{\op}<1\); for \(c=1\)
+you require \(\|\widetilde M\|_{\op}<\tfrac12\), which is \emph{strictly
+harder}. So in theory \(c=-1\) strengthens (not weakens) identifiability.
+
+\paragraph{So why do you see multiple nearby roots with \(c=-1\) in practice?}
+Three (compatible) explanations—all reflect \emph{near-singularity} of \(A_c\), not
+the presence of four terms:
+
+\begin{enumerate}
+\item \textbf{Approximate posterior far from truth.}
+For general \(q\),
+\[
+\widetilde M_c
+= I^{-1/2}\E\big[(m_{1,\bt_0}+c\,m_{2,\bt_0}-s_{\bt_0})s_{\bt_0}^\top\big]I^{-1/2}
+\]
+need \emph{not} equal \((1+c)\widetilde M\). With \(c=-1\),
+\(\widetilde M_{-1}=I^{-1/2}\E[(m_{1,\bt_0}-m_{2,\bt_0}-s_{\bt_0})s_{\bt_0}^\top]I^{-1/2}\).
+If \(q\) is poor, this can be large, pushing \(\|I+\widetilde M_{-1}\|\) toward singularity and creating flatness (hence multiple sample roots) around \(\bt_0\).
+
+\item \textbf{Finite-sample aliasing.}
+Asymptotics guarantee uniqueness only in the \emph{population} map
+\(\Psi_c(\bt)=\E_{\bt_0}[\psi_\bt^{(c)}(Y)]\).
+With small \(n\), the empirical map can intersect \(0\) multiple times near \(\bt_0\)
+when \(A_c(\bt_0)\) is ill-conditioned (smallest singular value near 0).
+This is a numerical manifestation of near-nonidentifiability, not of the
+algebraic decomposition.
+
+\item \textbf{Encoder underdependence on \(\bt\).}
+If the amortized \(q_\bt\) (poorly trained) makes \(m_{1,\bt}\) and \(m_{2,\bt}\)
+weakly dependent on \(\bt\), the Jacobian shrinks. Again \(A_c\) becomes
+near singular and many nearby \(\bt\) produce similar residuals.
+\end{enumerate}
+
+\paragraph{What to do (practical fixes consistent with the theory).}
+\begin{itemize}
+\item \textbf{Diagnose \(A_c\).} At a preliminary \(\tilde\bt\), estimate
+\(\widehat A_c=-\frac1n\sum (m_{1,\tilde\bt}+c\,m_{2,\tilde\bt})(y_i)\,s(\tilde\bt;y_i)^\top\)
+(or its Fisher-normalized \(\widehat{\widetilde M}_c\) if you can estimate \(I\)).
+If \(\kappa(\widehat A_c)\) is huge or \(\|\widehat{\widetilde M}_c\|_{\op}\approx 1\),
+expect multiple sample roots.
+\item \textbf{Choose \(c\) to \emph{stabilize} \(A_c\).}
+Without the true posterior, set \(c\) by a 1D line search to \emph{minimize}
+\(\|\widehat{\widetilde M}_c\|_{\op}=\big\|\widehat{\widetilde M}^{(1)}+c\,\widehat{\widetilde M}^{(2)}\big\|_{\op}\),
+where \(\widehat{\widetilde M}^{(1)}=I^{-1/2}\E[(m_{1,\bt_0}-s)s^\top]I^{-1/2}\) and
+\(\widehat{\widetilde M}^{(2)}=I^{-1/2}\E[m_{2,\bt_0}s^\top]I^{-1/2}\) are estimated
+at \(\tilde\bt\). This picks the \(c\) with the \emph{largest} identifiability margin.
+In well-specified cases it lands near \(c=-1\).
+\item \textbf{Shrink toward \(c=-1\).} If variance-only tuning yields a \(c\)
+that harms invertibility, use \(c_\lambda=-1+\lambda(c_{\text{meat}}^\star+1)\)
+with \(0\le\lambda\le1\), picked to enforce \(\|\widehat{\widetilde M}_{c_\lambda}\|_{\op}\le 1-\epsilon\).
+\item \textbf{Strengthen the encoder locally.} Improve \(q\) near \(\tilde\bt\)
+(enough VI steps or a teacher forcing step) to reduce
+\(\|m_{1,\tilde\bt}-m_{2,\tilde\bt}-s_{\tilde\bt}\|\) and thereby shrink
+\(\|\widetilde M_{-1}\|\).
+\end{itemize}
+
+\paragraph{Bottom line.}
+- The \emph{theory} reflects uniqueness through \(A_c(\bt_0)\): if it’s nonsingular, there is a unique local root—no matter how many terms are in \(\psi^{(c)}\).  
+- For the true posterior, \(c=-1\) gives \(A_{-1}=-I\): the \emph{strongest}
+identifiability.  
+- If you see multiple nearby roots with \(c=-1\), your \(q\) makes
+\(A_{-1}\) nearly singular at \(\bt_0\). The fix is to tune \(c\) (or \(q\))
+to push \(\|\widetilde M_c\|_{\op}\) \emph{below} 1 by a comfortable margin.
+
+
+\subsection{Identifiability  best when c = 0}
+
+\paragraph{Yes — that’s the key distinction.}
+
+\subsubsection*{1. At the \emph{true} posterior.}
+- We know \(m_{1,\bt_0}=s+b\), \(m_{2,\bt_0}=b\).  
+- With \(c=-1\): \(m_{1,\bt_0}-m_{2,\bt_0}=s\), so \(A_{-1}=-I\) and identifiability is maximal.  
+- With \(c=0\): \(A_0=-I-M\), which requires the spectral condition \(\|\widetilde M\|_{\op}<1\).  
+- Hence, at the oracle posterior, \(c=-1\) is the “MLE recapture’’ setting.
+
+\subsubsection*{2. With an \emph{approximate} posterior \(q\).}
+Now the identities break. In general,
+\[
+m_{1,\bt_0}^q \neq s+b, \qquad m_{2,\bt_0}^q \neq b.
+\]
+The combination
+\[
+m_{1,\bt_0}^q + c\,m_{2,\bt_0}^q
+\]
+is no longer guaranteed to land near the true score when \(c=-1\). In fact, subtracting \(m_{2,\bt_0}^q\) can make things worse:
+- It may cancel useful information contained in \(m_{1,\bt_0}^q\).  
+- It can amplify encoder mis-specification, pushing \(A_{-1}\) toward singularity.
+
+By contrast, the \emph{plain centered estimator} (\(c=0\)):
+\[
+\psi_\bt^{(0)}(y)=m_{1,\bt}(y)-\E[m_{1,\bt}(Y)]
+\]
+remains Fisher-consistent (root at \(\bt_0\)) and keeps the identifiability condition as \(\|\widetilde M^q\|_{\op}<1\). This condition is often milder in practice than what you get with \(c=-1\) and a poor \(q\).
+
+\subsubsection*{3. Interpretation.}
+- \(c=-1\): \emph{best if the posterior is close to the truth.} Recovers MLE in the oracle case, but fragile if \(q\) is poor.  
+- \(c=0\): \emph{robust default for arbitrary \(q\).} Identifiability is controlled by a clean spectral condition, less sensitive to encoder misspecification.  
+- Other \(c\): interpolate between robustness (\(c=0\)) and efficiency gains (\(c=-1\)), but riskier if \(q\) is bad.
+
+\subsubsection*{4. How to phrase in the paper.}
+\begin{quote}
+\emph{When the encoder approximates the true posterior well, taking \(c=-1\) yields a pseudo-score that recovers the MLE’s bread. However, with a misspecified encoder, \(c=0\) is typically more robust: it preserves Fisher consistency and requires only the spectral condition $\|\widetilde M^q\|_{\op}<1$. Thus $c=0$ should be viewed as the default safe choice, while $c=-1$ is an efficiency-oriented option that pays off only when the posterior approximation is of high quality.}
+\end{quote}
+
+
+\subsection{Control variance with c}
+
+\paragraph{Set–up.}
+For the control–variate family
+\[
+\psi^{(c)}_\theta(y)
+=\big(m_{1,\theta}(y)+c\,m_{2,\theta}(y)\big)
+-\E_\theta\!\big[m_{1,\theta}(Y)+c\,m_{2,\theta}(Y)\big],
+\]
+write the Fisher–normalized sandwich (at $\theta_0$) as
+\[
+\widetilde\Sigma_c
+\;\vcentcolon=\;
+I(\theta_0)^{1/2}\,
+\Sigma_c\,
+I(\theta_0)^{1/2}
+=
+\big(I+tS\big)^{-1}\;
+\big(I+2tS+t^2V\big)\;
+\big(I+tS^\top\big)^{-1},
+\quad t\vcentcolon=1+c,
+\]
+where (all expectations at $\theta_0$)
+\[
+S\;\vcentcolon=\;I^{-1/2}\E\!\big[(m_{1}+c\,m_{2}-s)s^\top\big]I^{-1/2},
+\qquad
+V\;\vcentcolon=\;I^{-1/2}\Var\!\big(m_{1}+c\,m_{2}\big)I^{-1/2}.
+\]
+
+\paragraph{Oracle case ($q=f_{Z\mid Y;\theta}$, exponential family).}
+Then \(m_1=s+b\), \(m_2=b\), so \(m_1+c\,m_2=s+t\,b\) with \(t=1+c\).
+Set
+\[
+S=\widetilde M\;\vcentcolon=\;I^{-1/2}\E[b\,s^\top]I^{-1/2},
+\qquad
+V=\widetilde\Sigma_{bb}\;\vcentcolon=\;I^{-1/2}\Var(b)\,I^{-1/2}.
+\]
+By Cauchy–Schwarz,
+\[
+\boxed{\quad \widetilde\Sigma_{bb}\ \succeq\ \widetilde M\,\widetilde M^\top. \quad}
+\]
+Now observe the factorization
+\[
+I+2t\widetilde M+t^2\widetilde\Sigma_{bb}
+\;\succeq\;
+(I+t\widetilde M)(I+t\widetilde M^\top),
+\]
+because the gap equals \(t^2(\widetilde\Sigma_{bb}-\widetilde M\widetilde M^\top)\succeq 0\).
+Therefore, for every \(t\ge 0\) (i.e. \(c\ge -1\)),
+\[
+\boxed{\quad
+\widetilde\Sigma_c
+=\ (I+t\widetilde M)^{-1}\,[I+2t\widetilde M+t^2\widetilde\Sigma_{bb}]\,(I+t\widetilde M^\top)^{-1}
+\ \succeq\
+(I+t\widetilde M)^{-1}(I+t\widetilde M)(I+t\widetilde M^\top)(I+t\widetilde M^\top)^{-1}
+= I.
+\quad}
+\]
+Hence, in Fisher units,
+\[
+\boxed{\ \ \widetilde\Sigma_c\ \succeq\ I\quad\text{for all }c\ge -1,\qquad
+\widetilde\Sigma_{-1}=I\ (\text{i.e., } \Sigma_{-1}=I^{-1}).\ }
+\]
+Moreover, writing
+\[
+\widetilde\Sigma_c - I
+=(I+t\widetilde M)^{-1}\,t^2\big(\widetilde\Sigma_{bb}-\widetilde M\widetilde M^\top\big)\,(I+t\widetilde M^\top)^{-1}
+\ \succeq\ 0,
+\]
+shows that \emph{as \(c\) moves from \(-1\) to \(0\) (i.e.\ $t$ increases $0\to 1$), the
+variance inflates monotonically in the Loewner order}. In particular, the minimum is attained at \(c=-1\), and \(c=0\) is (weakly) larger, with the gap controlled by \(\widetilde\Sigma_{bb}-\widetilde M\widetilde M^\top\succeq 0\).
+
+\paragraph{Near–oracle encoders (misspecification small).}
+Suppose \(q\) is close to the true posterior so that at \(\theta_0\)
+\[
+m_1^q=s+b+\Delta_1,\qquad m_2^q=b+\Delta_2,
+\]
+with \(\Delta_1,\Delta_2\) small in \(L^2(P_Y)\). Then in Fisher units
+\[
+S=\widetilde M + \mathcal O(\|\Delta\|),\qquad
+V=\widetilde\Sigma_{bb} + \mathcal O(\|\Delta\|),
+\]
+and the same factor comparison yields
+\[
+\widetilde\Sigma_c
+=\ (I+tS)^{-1}\,[I+2tS+t^2V]\,(I+tS^\top)^{-1}
+\ \succeq\
+(I+tS)^{-1}(I+tS)(I+tS^\top)(I+tS^\top)^{-1}
+= I,
+\]
+up to a remainder of order \(\mathcal O(t^2\|\Delta\|)\). Thus for \(q\) sufficiently close to the oracle and \(c\in[-1,0]\) (small \(t\)), the map \(c\mapsto \widetilde\Sigma_c\) is \emph{locally nondecreasing} in Loewner order:
+\[
+\boxed{\quad
+\widetilde\Sigma_{-1}\ \preceq\ \widetilde\Sigma_c\ \preceq\ \widetilde\Sigma_0
+\ +\ \mathcal O(\|\Delta\|)\quad (c\in[-1,0],\ \|\Delta\|\text{ small}).\quad}
+\]
+Equivalently: as you tune \(c\) from \(0\) down to \(-1\), the asymptotic variance \emph{decreases} toward its oracle minimum, with deviations controlled continuously by the encoder misspecification size.
+
+\paragraph{Takeaways.}
+\begin{itemize}
+\item \textbf{Oracle case:} clear, global ordering—$c=-1$ minimizes the sandwich variance (in Fisher units), and variance increases monotonically as \(c\) moves toward \(0\) (or beyond).
+\item \textbf{Misspecified case (but close):} the same ordering holds up to $\mathcal O(\|\Delta\|)$ perturbations; hence fine-tuning \(c\) from \(0\to -1\) \emph{improves} variance until misspecification becomes large enough to violate the PSD gap \(V\succeq SS^\top\) by more than the $\mathcal O(\|\Delta\|)$ term.
+\item \textbf{Practical rule:} use \(c=0\) as a robust default; as your encoder improves, anneal \(c\downarrow -1\). Monitor identifiability via \(\|I+\widetilde M_c\|_{\op}\) (or its empirical proxy) to avoid getting too close to singularity when $q$ is still rough.
+\end{itemize}
+
+
+\subsection{final remarks}
+\paragraph{Q1. “If $q\neq f$, is $c=0$ best (for our \emph{sufficient} identifiability test)?”}
+Yes—as a \emph{robust} default under the operator–norm sufficient condition.
+
+For the control–variate family
+\[
+\psi^{(c)}_\theta(y)
+=\big(m_{1,\theta}(y)+c\,m_{2,\theta}(y)\big)
+-\E_\theta\!\big[m_{1,\theta}(Y)+c\,m_{2,\theta}(Y)\big],
+\]
+the (Fisher–normalized) perturbation is
+\[
+\widetilde M_c \;=\; I^{-1/2}\,\Cov\!\big(m_{1,\theta_0}+c\,m_{2,\theta_0}-s_{\theta_0},\,s_{\theta_0}\big)\,I^{-1/2}.
+\]
+When $q\neq f$ we cannot assume cancellations between $m_1$ and $m_2$. Decompose
+\[
+\widetilde M_c \;=\; \underbrace{I^{-1/2}\Cov(m_{1,\theta_0}-s_{\theta_0},\,s_{\theta_0})I^{-1/2}}_{\widetilde M^{(1)}}
+\;+\; c\,\underbrace{I^{-1/2}\Cov(m_{2,\theta_0},\,s_{\theta_0})I^{-1/2}}_{\widetilde M^{(2)}}.
+\]
+By the triangle inequality,
+\[
+\boxed{\quad \|\widetilde M_c\|_{\op} \;\le\; \|\widetilde M^{(1)}\|_{\op} + |c|\,\|\widetilde M^{(2)}\|_{\op}. \quad}
+\]
+Our \emph{sufficient} identifiability test is $\|\widetilde M_c\|_{\op}<1$.  
+Without any reliable sign/alignment information between $\widetilde M^{(1)}$ and $\widetilde M^{(2)}$, the bound above is minimized at $c=0$; any $|c|>0$ can only \emph{tighten} the sufficient condition. Hence:
+\[
+\boxed{\text{Robust default when $q\neq f$: take } c=0.}
+\]
+Only when $q$ is known to be \emph{close} to $f$ (so that $\widetilde M^{(1)}\approx -\widetilde M^{(2)}$) does $c\approx -1$ create cancellation and enlarge the margin.
+
+\medskip
+\paragraph{Q2. “How do we \emph{monitor} $\widetilde M_c$ in practice if we do not have $s$ or $I$?”}
+You can use \emph{score–free} diagnostics that assess the \emph{same local identifiability} via a numerical Jacobian of the sample moment map—no $s$, no $I$, no $\nabla q$.
+
+\subparagraph{(D1) Derivative–free Jacobian of the empirical map.}
+Define the empirical moment
+\[
+\widehat\Psi_c(\theta)\;=\;\frac1n\sum_{i=1}^n \Big(m_{1,\theta}(y_i)+c\,m_{2,\theta}(y_i)\Big)\;-\;\widehat{\E}_\theta\!\Big[m_{1,\theta}(Y)+c\,m_{2,\theta}(Y)\Big],
+\]
+where $\widehat{\E}_\theta[\cdot]$ is a Monte Carlo average from the model $Y\sim f_{Y;\theta}$ (no score needed).
+Compute a \emph{finite-difference} Jacobian at a preliminary $\tilde\theta$:
+\[
+\widehat A_{c,n}(:,j)\;\approx\;\frac{\widehat\Psi_c(\tilde\theta+h e_j)-\widehat\Psi_c(\tilde\theta-h e_j)}{2h}.
+\]
+Then inspect $\sigma_{\min}(\widehat A_{c,n})$ (or $\kappa(\widehat A_{c,n})$).  
+A large $\sigma_{\min}$ certifies strong local identification.  
+You can also \emph{tune} $c$ by 1D search to maximize $\sigma_{\min}(\widehat A_{c,n})$.
+
+\subparagraph{(D2) Variance–only surrogate (score–free upper bound).}
+By Cauchy–Schwarz,
+\[
+\|\widetilde M_c\|_{\op}
+=\big\|I^{-1/2}\Cov(m_c-s,s)I^{-1/2}\big\|_{\op}
+\ \le\ \sqrt{\lambda_{\max}\!\big(I^{-1/2}\Var(m_c-s)I^{-1/2}\big)}.
+\]
+While this still involves $s$ inside $\Var(m_c-s)$, a crude (conservative) score–free proxy is to monitor $\lambda_{\max}(\Var(m_c))$ itself across nearby $\theta$ and choose $c$ that \emph{reduces} this dispersion; in practice this correlates with improved conditioning of $\widehat A_{c,n}$ obtained in (D1).
+
+\subparagraph{(D3) Preconditioning.}
+Work in a reparametrized scale where the model is roughly isotropic (e.g., whiten $\theta$ by the empirical covariance of $\widehat\Psi_c$ over a small neighborhood). This makes the numerical Jacobian test less sensitive to unknown $I$.
+
+\medskip
+\paragraph{Practical guidance to include in the paper.}
+\begin{itemize}
+\item \textbf{Default:} use $c=0$ unless the encoder is demonstrably close to the true posterior.
+\item \textbf{Anneal:} as encoder quality improves, anneal $c\downarrow -1$ and monitor $\sigma_{\min}(\widehat A_{c,n})$; stop decreasing $c$ if conditioning worsens.
+\item \textbf{Reporting:} report $\sigma_{\min}(\widehat A_{c,n})$ (and the success of the root solver) for a small grid of $c\in\{-1,-0.5,0\}$ to show robustness.
+\end{itemize}
+
+\paragraph{Nuanced statement for the paper.}
+\emph{“Our sufficient identifiability condition uses the operator norm of a Fisher–normalized perturbation. For arbitrary encoders $q$, the worst–case bound is minimized at $c=0$, which we adopt as a robust default. When $q$ is close to the true posterior, moving $c$ toward $-1$ improves efficiency and can enlarge the identifiability margin via cancellation. In practice, we monitor local identification by a derivative–free Jacobian of the empirical moment map, requiring only forward evaluations of the encoder and model sampling (no score, no encoder derivatives).”}
+
+
+\subsection{Final words}
+
+\paragraph{Q1. “If $q\neq f$, is $c=0$ best (for our \emph{sufficient} identifiability test)?”}
+Yes—as a \emph{robust} default under the operator–norm sufficient condition.
+
+For the control–variate family
+\[
+\psi^{(c)}_\theta(y)
+=\big(m_{1,\theta}(y)+c\,m_{2,\theta}(y)\big)
+-\E_\theta\!\big[m_{1,\theta}(Y)+c\,m_{2,\theta}(Y)\big],
+\]
+the (Fisher–normalized) perturbation is
+\[
+\widetilde M_c \;=\; I^{-1/2}\,\Cov\!\big(m_{1,\theta_0}+c\,m_{2,\theta_0}-s_{\theta_0},\,s_{\theta_0}\big)\,I^{-1/2}.
+\]
+When $q\neq f$ we cannot assume cancellations between $m_1$ and $m_2$. Decompose
+\[
+\widetilde M_c \;=\; \underbrace{I^{-1/2}\Cov(m_{1,\theta_0}-s_{\theta_0},\,s_{\theta_0})I^{-1/2}}_{\widetilde M^{(1)}}
+\;+\; c\,\underbrace{I^{-1/2}\Cov(m_{2,\theta_0},\,s_{\theta_0})I^{-1/2}}_{\widetilde M^{(2)}}.
+\]
+By the triangle inequality,
+\[
+\boxed{\quad \|\widetilde M_c\|_{\op} \;\le\; \|\widetilde M^{(1)}\|_{\op} + |c|\,\|\widetilde M^{(2)}\|_{\op}. \quad}
+\]
+Our \emph{sufficient} identifiability test is $\|\widetilde M_c\|_{\op}<1$.  
+Without any reliable sign/alignment information between $\widetilde M^{(1)}$ and $\widetilde M^{(2)}$, the bound above is minimized at $c=0$; any $|c|>0$ can only \emph{tighten} the sufficient condition. Hence:
+\[
+\boxed{\text{Robust default when $q\neq f$: take } c=0.}
+\]
+Only when $q$ is known to be \emph{close} to $f$ (so that $\widetilde M^{(1)}\approx -\widetilde M^{(2)}$) does $c\approx -1$ create cancellation and enlarge the margin.
+
+\medskip
+\paragraph{Q2. “How do we \emph{monitor} $\widetilde M_c$ in practice if we do not have $s$ or $I$?”}
+You can use \emph{score–free} diagnostics that assess the \emph{same local identifiability} via a numerical Jacobian of the sample moment map—no $s$, no $I$, no $\nabla q$.
+
+\subparagraph{(D1) Derivative–free Jacobian of the empirical map.}
+Define the empirical moment
+\[
+\widehat\Psi_c(\theta)\;=\;\frac1n\sum_{i=1}^n \Big(m_{1,\theta}(y_i)+c\,m_{2,\theta}(y_i)\Big)\;-\;\widehat{\E}_\theta\!\Big[m_{1,\theta}(Y)+c\,m_{2,\theta}(Y)\Big],
+\]
+where $\widehat{\E}_\theta[\cdot]$ is a Monte Carlo average from the model $Y\sim f_{Y;\theta}$ (no score needed).
+Compute a \emph{finite-difference} Jacobian at a preliminary $\tilde\theta$:
+\[
+\widehat A_{c,n}(:,j)\;\approx\;\frac{\widehat\Psi_c(\tilde\theta+h e_j)-\widehat\Psi_c(\tilde\theta-h e_j)}{2h}.
+\]
+Then inspect $\sigma_{\min}(\widehat A_{c,n})$ (or $\kappa(\widehat A_{c,n})$).  
+A large $\sigma_{\min}$ certifies strong local identification.  
+You can also \emph{tune} $c$ by 1D search to maximize $\sigma_{\min}(\widehat A_{c,n})$.
+
+\subparagraph{(D2) Variance–only surrogate (score–free upper bound).}
+By Cauchy–Schwarz,
+\[
+\|\widetilde M_c\|_{\op}
+=\big\|I^{-1/2}\Cov(m_c-s,s)I^{-1/2}\big\|_{\op}
+\ \le\ \sqrt{\lambda_{\max}\!\big(I^{-1/2}\Var(m_c-s)I^{-1/2}\big)}.
+\]
+While this still involves $s$ inside $\Var(m_c-s)$, a crude (conservative) score–free proxy is to monitor $\lambda_{\max}(\Var(m_c))$ itself across nearby $\theta$ and choose $c$ that \emph{reduces} this dispersion; in practice this correlates with improved conditioning of $\widehat A_{c,n}$ obtained in (D1).
+
+\subparagraph{(D3) Preconditioning.}
+Work in a reparametrized scale where the model is roughly isotropic (e.g., whiten $\theta$ by the empirical covariance of $\widehat\Psi_c$ over a small neighborhood). This makes the numerical Jacobian test less sensitive to unknown $I$.
+
+\medskip
+\paragraph{Practical guidance to include in the paper.}
+\begin{itemize}
+\item \textbf{Default:} use $c=0$ unless the encoder is demonstrably close to the true posterior.
+\item \textbf{Anneal:} as encoder quality improves, anneal $c\downarrow -1$ and monitor $\sigma_{\min}(\widehat A_{c,n})$; stop decreasing $c$ if conditioning worsens.
+\item \textbf{Reporting:} report $\sigma_{\min}(\widehat A_{c,n})$ (and the success of the root solver) for a small grid of $c\in\{-1,-0.5,0\}$ to show robustness.
+\end{itemize}
+
+\paragraph{Nuanced statement for the paper.}
+\emph{“Our sufficient identifiability condition uses the operator norm of a Fisher–normalized perturbation. For arbitrary encoders $q$, the worst–case bound is minimized at $c=0$, which we adopt as a robust default. When $q$ is close to the true posterior, moving $c$ toward $-1$ improves efficiency and can enlarge the identifiability margin via cancellation. In practice, we monitor local identification by a derivative–free Jacobian of the empirical moment map, requiring only forward evaluations of the encoder and model sampling (no score, no encoder derivatives).”}

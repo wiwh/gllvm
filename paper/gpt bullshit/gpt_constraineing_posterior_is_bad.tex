@@ -1,0 +1,80 @@
+\section{Constraining posterior to gaussian is bad}
+
+\paragraph{Your intuition is right.} 
+Fixing the posterior family (e.g.\ to Gaussian) makes all statements \emph{model–dependent}. 
+By contrast, your \emph{framework} with symmetric centering delivers theory that is agnostic to how $q_\bt(Z\mid Y)$ is chosen. 
+That is strictly stronger and cleaner for the paper.
+
+\medskip
+\noindent\textbf{What the true/approximate posterior changes.}
+Write at $\bt_0$
+\[
+m_{\bt_0}^q(Y)\;=\;\E_{q_{\bt_0}(Z\mid Y)}\!\big[D(Z,\bt_0)^\top T(Y)\big],
+\qquad
+m_{\bt_0}^\star(Y)\;=\;\E\!\big[D(Z,\bt_0)^\top T(Y)\mid Y\big],
+\]
+and $\delta(Y)\vcentcolon=m_{\bt_0}^q(Y)-m_{\bt_0}^\star(Y)$. Then
+\[
+\boxed{\quad
+A_q \;=\; A^\star - \E[\delta\,s_0^\top],\qquad
+B_q \;=\; B^\star + \Var(\delta)+2\,\Cov(m^\star_{\bt_0},\delta),
+\quad}
+\]
+with $A^\star=-\E[m^\star_{\bt_0}s_0^\top],~ B^\star=\Var(m^\star_{\bt_0})$, $s_0=s(\bt_0;Y)$. 
+Hence the \emph{entire} effect of using a restricted posterior family shows up through the single error process $\delta(Y)$.
+
+\medskip
+\noindent\textbf{Why the general derivation is better.}
+\begin{itemize}
+\item \emph{Derivative-free bread:} Under symmetric centering,
+\[
+A(\bt_0)\;=\;-\E[m_{\bt_0}(Y)\,s(\bt_0;Y)^\top]
+\]
+and all $\nabla_\bt m_\bt$ cancel. This remains true for \emph{any} $q$ (Gaussian or not), so you never differentiate through the encoder. ELBO/VAE routes \emph{do} drag in encoder derivatives.
+\item \emph{Continuity in $q$:} After Fisher normalization,
+\[
+\|\widetilde A_q-\widetilde A^\star\|_{\op}
+\;\le\;C_1\|\tilde\delta\|_{L^2},\qquad
+\|\widetilde B_q-\widetilde B^\star\|_{\op}
+\;\le\;C_2\|\tilde\delta\|_{L^2}+C_3\|\tilde\delta\|_{L^2}^2,
+\]
+so $A_q,B_q$ (and the sandwich variance) vary \emph{continuously} with the quality of $q$ measured by $\|\delta\|_{L^2(P_Y)}$. This pins down the “closer to the true posterior $\Rightarrow$ better” intuition \emph{inside the equations}.
+\item \emph{Identifiability test is universal:} 
+\[
+A(\bt_0)=-I^{1/2}\big(I+\widetilde M\big)I^{1/2},\qquad
+\|\widetilde M\|_{\op}<1\ \Rightarrow\ A(\bt_0)\ \text{invertible}
+\]
+holds for any $q$ and any encoder; no family-specific tricks.
+\end{itemize}
+
+\medskip
+\noindent\textbf{What a fixed Gaussian $q$ buys (and what it misses).}
+\begin{itemize}
+\item \emph{Pros (as a worked example):} If $D(Z,\bt)$ is \emph{linear/quadratic} in $Z$ (common in exp–fam latent models), then $m_{\bt_0}^q(Y)$ reduces to functions of the VI mean/covariance $(\mu_q(Y),\Sigma_q(Y))$, so $\delta(Y)$ becomes an explicit combination of $(\mu_q-\mu^\star,\Sigma_q-\Sigma^\star)$:
+\[
+\text{e.g. if }D(Z,\bt_0)=a_0(\bt_0)+A_0(\bt_0)Z,\quad
+\delta(Y)=\big(A_0(\bt_0)(\mu_q(Y)-\mu^\star(Y))\big)^\top T(Y),
+\]
+and
+\[
+\|\delta\|_{L^2}\ \le\ \|A_0(\bt_0)\|\,\|T\|_{L^2}\,\|\mu_q-\mu^\star\|_{L^2}.
+\]
+You can then bound $\|\widetilde A_q-\widetilde A^\star\|_{\op}$, $\|\widetilde B_q-\widetilde B^\star\|_{\op}$ in terms of mean/covariance mismatch.
+\item \emph{Cons (model dependence):} For skewed/multimodal posteriors, Gaussian VI induces large $\delta$, and all bounds degrade accordingly. Any claim that “Gaussian VI works” must be tied to \emph{specific} model structure (e.g., conditional linear–Gaussian, near-quadratic log-likelihood) — otherwise it is not generally valid.
+\end{itemize}
+
+\medskip
+\noindent\textbf{Recommended paper structure.}
+\begin{enumerate}
+\item \emph{Framework first (general $q$):} Present the symmetric-centering estimator, the derivative-cancellation lemma, the Fisher$+$perturbation bread, the spectral identifiability condition, and the sandwich variance in normalized form. These are family-free.
+\item \emph{Specialization (Gaussian VI) as a \underline{corollary/example}:} 
+give explicit $\delta$ formulas for linear/quadratic $D$, deliver computable bounds in terms of $(\mu_q,\Sigma_q)$ errors, and include experiments where Gaussian VI suffices (e.g., linear–Gaussian latent models) and where it struggles (nonlinear/multimodal).
+\item \emph{Practical pitch:} Emphasize the two killer properties your coworker’s “fix-$q$” approach cannot offer in general: 
+(i) \textbf{no encoder derivatives anywhere in theory}, 
+(ii) \textbf{universal identifiability test} $\|\widetilde M\|_{\op}<1$, independent of the encoder family.
+\end{enumerate}
+
+\medskip
+\noindent\textbf{Bottom line.} 
+A fixed Gaussian $q$ can be a \emph{nice example}, not the main theorem. 
+Your symmetric-centering framework is the real contribution: it cleanly separates statistical identification (Fisher geometry) from posterior approximation (the single error process $\delta$), requires \emph{no} encoder Jacobians, yields \emph{universal} identifiability criteria, and scales computationally (\(\lesssim 2\times\) VAE) with targeted centering if desired.

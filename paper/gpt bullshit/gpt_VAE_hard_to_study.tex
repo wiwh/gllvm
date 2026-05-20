@@ -1,0 +1,117 @@
+\section{Why vae is hard to study}
+\section*{Key Message \& Why It Matters}
+
+\begin{center}
+\framebox[0.98\linewidth][c]{%
+\parbox{0.95\linewidth}{%
+\textbf{KEY:} With \emph{symmetric centering}
+\[
+\psi_\bt(y)=m_\bt(y)-\E_{f_{Y;\bt}}[m_\bt(Y)],\qquad
+m_\bt(y)=\E_{q_\bt(Z\mid y)}\!\big[D(Z,\bt)^\top T(y)\big],
+\]
+\textbf{all} derivatives \(\nabla_\bt m_\bt(y)\) (hence \(\nabla_\bt q_\bt\)) \textbf{cancel from the bread}. 
+Therefore the asymptotic theory \emph{never} differentiates through the encoder/VI posterior.
+}}
+\end{center}
+
+\paragraph{Consequence.} 
+Compared to ELBO-based (VAE) estimators, where asymptotic variance analysis must track \(\nabla_\bt \E_{q_\bt}[\,\cdot\,]\) and, via the reparameterization/score terms, \(\nabla_\bt q_\bt\), our estimator’s sandwich variance depends only on:
+\[
+A(\bt_0)=-\,\E\!\big[m_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big]
+\quad\text{and}\quad
+B(\bt_0)=\Var\!\big(m_{\bt_0}(Y)\big),
+\]
+with \(m_{\bt_0}\) evaluated by a \emph{forward} pass of the encoder and \emph{no} encoder/VI Jacobians.
+
+\subsection*{Clean Identifiability \& Variance (Exp–Fam Payoff)}
+In exponential families we have the decomposition \(m_{\bt_0}=s(\bt_0;\cdot)+b_{\bt_0}\), yielding
+\[
+A(\bt_0)=-\,I(\bt_0)\;-\;M,\qquad
+M=\E\!\big[b_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big],
+\]
+and the \emph{normalized reduction}
+\[
+A(\bt_0)=-\,I(\bt_0)^{1/2}\Big(I+\widetilde M\Big)I(\bt_0)^{1/2},\qquad
+\widetilde M=I(\bt_0)^{-1/2}MI(\bt_0)^{-1/2}.
+\]
+Hence identifiability reduces to the crisp spectral condition
+\[
+\|\,\widetilde M\,\|_{\op}<1 \;\;\Longrightarrow\;\; A(\bt_0)\text{ invertible (local uniqueness).}
+\]
+The meat is simply \(B(\bt_0)=I(\bt_0)+\Sigma_{bb}+2M\) with \(\Sigma_{bb}=\Var(b_{\bt_0})\), so the sandwich variance is
+\[
+\Sigma = I(\bt_0)^{-1/2}\,(I+\widetilde M)^{-1}\,\Big(I+\widetilde\Sigma_{bb}+2\widetilde M\Big)\,(I+\widetilde M)^{-T} I(\bt_0)^{-1/2},
+\]
+\emph{again without} encoder derivatives. This “Fisher \(+\) perturbation’’ structure (and the resulting spectral test) is the exp–fam dividend; it is what ELBO-based analyses lack in general.
+
+\subsection*{What You Gain Over ELBO/VAE}
+
+\paragraph{(G1) No encoder Jacobians in theory.}
+\begin{lemma}[Derivative cancellation]
+Under the regularity for interchanging \(\nabla_\bt\) and \(\E\),
+\[
+A(\bt_0)=\E\!\big[\nabla_\bt \psi_\bt(Y)\big]_{\bt_0}
+= -\,\E\!\big[m_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big],
+\]
+so all \(\nabla_\bt m_\bt\) (hence \(\nabla_\bt q_\bt\)) terms cancel \emph{identically}.
+\end{lemma}
+
+\paragraph{(G2) A tractable, interpretable identifiability check.}
+ELBO routes provide no generic, scale-free condition for local uniqueness. Here, \(\|\,\widetilde M\,\|_{\op}<1\) is immediate to compute/estimate and has a clean interpretation (“the normalized alignment of the correction with the score is $<1$”).
+
+\paragraph{(G3) Continuity to the true posterior.}
+Let \(m^\star_{\bt_0}=\E[D(Z,\bt_0)^\top T(Y)\mid Y]\) and \(m^q_{\bt_0}\) be the VI map. With \(\delta=m^q_{\bt_0}-m^\star_{\bt_0}\),
+\[
+\widetilde A_q=\widetilde A^\star-\E[\tilde\delta\,\tilde s^\top],\qquad
+\widetilde B_q=\widetilde B^\star+\Var(\tilde\delta)+2\Cov(\tilde m^\star,\tilde\delta),
+\]
+so as \(q\to f_{Z\mid Y;\bt_0}\) in \(L^2(P_Y)\), the sandwich \(\Sigma_q\to\Sigma^\star\) and \(\|\,\widetilde M_q\,\|_{\op}\to\|\,\widetilde M^\star\,\|_{\op}\). “Closer posterior \(\Rightarrow\) better” is \emph{visible in the equations}.
+
+\subsection*{Computational Cost \& Flexibility}
+
+\paragraph{(C1) Cost: at most \(\mathbf{\approx 2\times}\) a VAE step.}
+Let \(C_{\text{enc}}\) be the cost of one encoder forward pass and \(C_{\text{dec}}\) the cost to evaluate the model score \(s(\bt;Y)\) (decoder backward). A Newton/gradient step for our estimator uses:
+\[
+\text{One pass to compute } m_\bt(Y) \;(+\text{MC averaging if used}) \quad\text{and}\quad
+\text{one pass to compute } s(\bt;Y).
+\]
+No backprop through the encoder is required by theory. Thus per-iteration cost is \(\lesssim C_{\text{dec}} + C_{\text{enc}}\), typically \(\le 2\times\) a standard VAE training step (which already uses both networks).
+
+\paragraph{(C2) Targeted/partial centering.}
+Let \(P\) be a selector/projection onto a subset of parameters. Define
+\[
+\psi_\bt^{\text{partial}}(y)=
+\begin{bmatrix}
+P\,m_\bt(y) - \E_\bt[P\,m_\bt(Y)]\\
+(I-P)\,s(\bt;y)
+\end{bmatrix}.
+\]
+Then
+\[
+A(\bt_0)=-
+\begin{bmatrix}
+\E[P\,m_{\bt_0}s^\top]\\ \E[(I-P)\,s\,s^\top]
+\end{bmatrix}
+=
+-\begin{bmatrix}
+I + P M I^{-1}I & *\\[2pt]
+0 & (I-P)I(I-P)
+\end{bmatrix}
+\]
+(up to the obvious conformable partitions), so identifiability reduces to the spectral test on the \emph{centered} block \(I+\widetilde M_{PP}\), while non-centered coordinates inherit the MLE bread. This lets you “pay” the centering only where it buys the most (e.g., nuisance-vs-target parameters).
+
+\paragraph{(C3) Plug-and-play encoders.}
+Any amortized/VI encoder \(q_\bt\) (even black-box neural nets) can be used since theory needs only \(m_\bt\) values, not \(\nabla_\bt q_\bt\). This is exactly where ELBO-based variance derivations become messy or intractable.
+
+\subsection*{One-paragraph Positioning (for the intro)}
+\emph{We propose a Fisher-consistent, scalable \(Z\)-estimator for latent-variable models that \textbf{never} differentiates through the encoder/posterior approximation. The key is a symmetric centering that annihilates all encoder derivatives from the bread, yielding a simple “Fisher \(+\) perturbation’’ form with a clean, dimensionless identifiability condition \(\|\,\widetilde M\,\|_{\op}<1\). The sandwich variance depends only on forward encoder evaluations, not encoder Jacobians. Computationally, each iteration costs about one encoder forward plus one score evaluation (\(\lesssim 2\times\) VAE), and the method supports \emph{targeted} centering on subsets of parameters. The closer the encoder’s posterior is to truth, the closer our asymptotics are to the oracle, with continuity guarantees made explicit in our equations.}
+
+\subsection*{(Optional) Minimal “killer” theorem to box}
+\begin{theorem}[Bread without encoder derivatives]
+Under standard regularity,
+\[
+A(\bt_0)=\E[\nabla_\bt\psi_\bt(Y)]_{\bt_0}
+= -\,\E\!\big[m_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big],
+\]
+so \(\nabla_\bt m_\bt\) (hence \(\nabla_\bt q_\bt\)) plays \emph{no role} in identifiability or asymptotic normality. In exponential families, \(A(\bt_0)=-I(\bt_0)^{1/2}(I+\widetilde M)I(\bt_0)^{1/2}\) and \(\|\,\widetilde M\,\|_{\op}<1\) suffices for local uniqueness.
+\end{theorem}

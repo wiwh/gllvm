@@ -1,0 +1,516 @@
+    \documentclass[twoside,11pt]{article}
+% HEIN QUOI
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+\usepackage{jmlr2e}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{preamble}
+\usepackage{booktabs}
+\usepackage{ulem}
+\usepackage[most]{tcolorbox}  % Required for the colored box
+
+\newcommand{\Var}{\operatorname{Var}}
+
+% todo
+ \setlength {\marginparwidth }{2cm} % TODO: REMOVE THAT later
+\usepackage{todonotes}
+\definecolor{lightred}{RGB}{120,60,60}
+\definecolor{darkred}{RGB}{255,0,0}
+\newcommand{\proofread}[1]{{\color{lightred}#1}}
+\newcommand{\rewrite}[2]{{\color{darkred}#1}}
+
+\definecolor{gbcolor}{RGB}{220, 160, 180}
+\newcommand{\gb}[2][]{\todo[color=gbcolor, caption={GB}, #1]{#2}}
+\definecolor{jbcolor}{RGB}{180, 220, 200}
+\newcommand{\jb}[2][]{\todo[color=jbcolor, caption={JB}, #1]{#2}}
+\definecolor{bpcolor}{RGB}{255, 128, 10}
+\newcommand{\bp}[2][]{\todo[color=bpcolor, caption={BP}, #1]{#2}}
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+% Heading arguments are {volume}{year}{pages}{submitted}{published}{author-full-names}
+
+\jmlrheading{1}{2000}{1-48}{4/00}{10/00}{Blanc}
+
+% Short headings should be running head and authors last names
+
+\ShortHeadings{Zq Estimation for Latent Variable Models}{}
+\firstpageno{1}
+
+\begin{document}
+
+\title{Bias Correction for Approximate Inference in Latent Variable Models}
+
+\author{\name Guillaume Blanc \email guillaume.e.blanc@gmail.com
+  \AND
+  \name Julien Bodelet \email julien.bodelet@gmail.com
+  \AND
+  \name Benjamin Poilane \email benjamin@protonmail.com
+}
+
+\editor{} % lol
+
+\maketitle
+
+\begin{abstract}
+We propose a general bias-correction framework for approximate inference in exponential-family latent variable models. Maximum likelihood estimation is typically infeasible, and common approximations—such as variational inference, Laplace methods, quadrature, or neural encoders—introduce asymptotic bias. Our framework restores unbiased estimating equations without requiring derivatives through the approximate posterior. Leveraging Z-estimation theory, it yields estimators that are consistent and asymptotically normal, with a continuation parameter controlling the trade-off between robustness to misspecification and statistical efficiency. The approach is agnostic to the approximation scheme, providing unified asymptotic guarantees for both modern machine learning methods and classical statistical techniques.
+\end{abstract}
+
+
+
+\newpage
+
+\listoftodos
+\newpage
+
+\section{Notations}
+\input{notations}
+\newpage
+
+\section{Introduction}
+Latent variable models are commonly used to capture complex dependencies in multivariate data. 
+Generating a data point $\Y \in \mathcal Y \subseteq \mathbb R^p$ from a latent variable model involves two steps: 
+(1) a latent (unobserved) variable $\Z \in \mathcal Z \subseteq \mathbb R^q$ is generated from a known prior distribution $f_\Z(\cdot)$; 
+(2) given $\Z$, the random variable $\Y \mid \Z$ is generated from some conditional distribution $f_{\Y \mid \Z;\,\bt}(\cdot \mid \Z)$, known up to the parameters $\bt \in \bm\Theta \subseteq \mathbb R^r$. 
+Thus, the latent variable model is a \textit{generative model} $f_{\Y, \Z;\,\bt}(\cdot, \cdot)$ for the pair $(\Y, \Z)$:
+%
+\begin{align}
+    \Z &\sim f_\Z(\cdot), \\
+    \Y \mid \Z &\sim f_{\Y \mid \Z;\,\bt}(\cdot \mid \Z),
+    \label{eqn:generative-model-general}
+\end{align}
+%
+where $\Z$ is unobserved.
+%
+The marginal density $f_{\Y;\,\bt}(\cdot)$ of $\Y$, governing the observed quantities, is then obtained by integrating out the latent variable:
+%
+\begin{equation}
+    f_{\Y;\,\bt}(\cdot) 
+    = \int_{\mathcal Z} f_{\Y, \Z;\,\bt}(\cdot, \z)\, d\z 
+    = \int_{\mathcal Z} f_{\Y \mid \Z;\,\bt}(\cdot \mid \z)\, f_\Z(\z)\, d\z.
+\end{equation}
+
+Latent variable models are elegant tools for multivariate data analysis, are easy to set up, and are surprisingly general. Identifiability usually requires that the dimension of the latent variable space, $q$, be smaller than that of the feature space, $p$. Far from being a drawback, this constraint enables dimensionality reduction, where a small number of latent variables capture the most salient features of the data. As such, they have been used extensively in deep learning, etc...\todo{Improve text, add references. Low prio.} In the social and biological sciences, they are a key tool to estimate a theorized latent construct ($\Z$) from a set of observable features ($\Y|\Z$) that it is assumed to affect. In longitudinal settings, where many observations of the same unit are gathered over time, a latent variable known as random effect can be used to model the correlation between observations on the same unit.
+
+
+
+
+% we don't need to talk (much) about the marginal likelihood, since the method only relies on the extended likelihood.
+% I would just talk about $f_\bt(y)$, which is intractable due to the integral.
+Given a sample of $n$ data pairs $\{(\y_i, \z_i)\}_{i=1}^n$, each drawn independently from $f_{\Y,\Z;\,\bt}(\cdot,\cdot)$, where the latent variables $\{\z_i\}_{i=1}^n$ are unobserved, an estimate of the parameter $\bt_0$ can, in principle, be obtained by maximizing the sample \textit{marginal log-likelihood} $\sum_{i=1}^n \log f_{\Y;\,\bt}(\y_i)$. Under some regularity conditions, the solution, the \emph{maximum likelihood estimator}, is unique and can be obtained as the root of the following set of estimating equations,
+
+\begin{equation}
+\sum_{i=1}^n s(\bt;\y_i) = 0,
+\label{eqn:MLE-estimating-equations}
+\end{equation}
+%
+where $s(\bt; \y_i) \vcentcolon = \nabla_\bt \log f_{\Y;\,\bt}(\y_i)$ is the \emph{score function}. In latent variable models $f_{\Y,\Z;\,\bt}(\cdot, \cdot)$, the score admits an interesting, equivalent definition\footnote{The derivation of this form of the score is available in the appendix (TODO: now it is in the box)}:
+\begin{equation}
+    s(\bt; \y_i) \vcentcolon = \mathbb{E}_{f_{\Z \mid \Y;\,\bt}(\cdot\mid \y_i)}
+\!\left[ \nabla_\bt \log f_\bt(\y_i, \Z)\right],
+\label{eqn:score}
+\end{equation}
+\noindent
+where the expectation, for each $i$, is taken with respect to the posterior density $f_{\Z|\Y;\,\bt}(\cdot\mid\y_i)$\footnote{All expectations are taken with respect to the appropriate measure (counting or Lebesgue).}.
+\bp{TODO: add similar remark for densities?}
+
+\begin{remark}[The score in latent variable models]
+The score function is the expectation, taken with respect to the posterior distribution $f_{\Z\mid\Y;\,\bt}(\cdot\mid\y_i)$, of the derivative of the log-likelihood of the joint distribution. Not knowing the true value of the $\z_i$, this latter alone is not useful: the principled approach is to average out over the most likely value of $\z_i$, given $\y_i$, given by the posterior distribution.
+\end{remark}
+
+
+
+While the expectation in \eqref{eqn:MLE-estimating-equations} can be computed exactly for some simple models, it is generally intractable in high-dimensional or non-linear settings due to the complexity of the posterior distribution $f_{\Z\mid\Y;\,\bt}(\cdot \mid \y_i)$. In practice, one therefore relies on approximate inference methods.  
+
+A common strategy is \emph{amortized inference}, which constructs an approximate posterior directly from the data, avoiding case-by-case optimization and enabling scalability to large datasets. The drawback is that restricted approximation families typically yield biased expectations, and this bias propagates to parameter estimates. Known as \emph{amortization bias}, it persists even with large samples.  
+
+These limitations motivate estimation strategies that preserve the computational advantages of amortized inference while mitigating the bias it induces. In this work, we introduce such a strategy, based on the classical framework of Z-estimation \citep{vandervaart1998}, which combines scalability with the statistical guarantees of likelihood-based methods.  
+
+
+In other words, we propose a method that :
+\begin{enumerate}
+    \item \textbf{Remains consistent} for the parameters of interest under mild assumptions, even when the approximate posterior is misspecified.
+    \item \textbf{Minimizes bias propagation} from the approximate posterior to the final parameter estimates, while preserving computational feasibility.
+    \item In implementation: \textbf{Uses amortized inference} to efficiently produce approximate posteriors for large datasets.
+\end{enumerate}
+
+The next section develops our framework, based on Z-estimation, by reformulating the estimating equations in a way that corrects for the systematic bias introduced by approximate posteriors, while keeping their computational advantages intact.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\newpage
+\section{Method}
+\label{sec:method}
+
+\subsection{Model setup}
+{\color{red} For now this section is heavy in notations and math. We will push most of it to the Appendix.}
+
+
+We consider a parametric latent variable model
+\[
+\Y, \Z \sim f_{\Y, \Z;\,\bt}(\cdot, \cdot) \;=\; f_{\Y\mid\Z;\,\bt}(\cdot \mid \cdot)\, f_{\Z}(\cdot),
+\]
+where $\Y \in \mathcal{Y} \subseteq \mathbb{R}^p$ is observed, $\Z \in \mathcal{Z} \subseteq \mathbb{R}^q$ is latent, $\bt \in \Theta \subseteq \mathbb{R}^r$ is the parameter of interest and $f_\Z(\cdot)$ is a known prior on $\Z$. Furthermore, for any given pair of values $(\y, \z) \in \mathcal{Y}\times\mathcal{Z}$, we assume that $f_{\Y\mid\Z;\,\bt}(\y \mid \z)$ belongs to the exponential family in canonical form:
+\[
+f_{\Y|\Z;\,\bt}(\y \mid \z)
+= \exp\!\left\{ T(\y)^\top \eta(\z,\bt) \;-\; A\!\bigl(\eta(\z,\bt)\bigr) \;+\; B(\y) \right\},
+\]
+where $T(\y)\in\mathbb{R}^p$ is the sufficient statistic, $\eta(\z,\bt)\in\mathbb{R}^p$ the natural parameter, and $A(\cdot)$ the log-partition function. When the conditional distribution is a member of the exponential family, the score function \eqref{eqn:score} takes the form\footnote{The derivation is available in the Appendix \eqref{apx:mle-estimating-equations}.}
+%
+\begin{equation}
+    s(\bt; \y_i) 
+    = \mathbb{E}_{f_{\Z|\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z;\bt)^\top \left(T(\y_i) - \mu(\Z; \bt)\right)\right],
+\label{eqn:score_expfam}
+\end{equation}
+%
+where we define
+\[
+D(\z;\bt) \;:=\; \frac{\partial \eta(\z,\bt)}{\partial \bt} \;\in\; \mathbb{R}^{p\times r},
+\qquad
+\mu(\z; \bt) \;:=\; \mathbb{E}_{f_{\Y\mid\Z;\,\bt}(\cdot\mid \z)}[\,T(\Y)\,].
+\]
+\gb[inline]{Delete these definitions and use the original quantities instead? They don't bring much anymore.}
+%
+The score satisfies the property --  sometimes called the \emph{first Bartlett identity} --  that its expectation under the true model $f_{\Y;\,\bto}(\cdot)$ is zero at $\bt=\bto$, i.e. $\mathbb{E}_{f_{\Y;\,\bt_0}(\cdot)}[s(\bt; \bt)]_{\bt=\bto} = 0$, as can be easily verified. This property is fundamental to the desirable theoretical properties of the MLE, as it guarantees the estimating equations of the MLE are unbiased: in fact, an estimator whose estimating equations are not $0$ in expectation is asymptotically biased. 
+
+Note that the score function in exponential families latent variable models can be decomposed into the difference of two expectations: 
+one involving a \emph{data-driven} quantity, which carries the sample information, 
+and one involving a \emph{model-based} quantity, which serves as a centering term:
+\begin{align}
+    s(\bt;\y_i) 
+    &= \underbrace{\mathbb{E}_{f_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z;\bt)^\top T(\y_i) \right]}_{\vcentcolon =\; m(\y_i; \bt)}
+    \;-\;
+    \underbrace{\mathbb{E}_{f_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z;\bt)^\top \mu(\Z; \bt)\right]}_{\vcentcolon =\; b(\y_i; \bt)}\\
+    &= m(\y_i; \bt) - b(\y_i;\bt)
+\label{eqn:score_expfam_decomposed}
+\end{align}
+
+% \input{definition_MLE}
+Unfortunately, the two quantities $m(\y_i;\bt)$ and $b(\y_i;\bt)$ cannot be computed in practice, because the posterior density $f_{\Z\mid\Y;\,\bt}$ does not lead to easily computable quantities. We adopt the strategy of standard methods, which propose to replace the posterior density $f_{\Z\mid\Y;\,\bt}$ by a surrogate $q_{\Z\mid\Y;\,\bt}$, more convenient for computations. We thus define the following quantities
+%
+\begin{align}
+m_q(\y_i; \bt) \vcentcolon &= \mathbb{E}_{q_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\left[D(\Z;\bt)^\top T(\y_i)\right]\\
+b_q(\y_i; \bt) \vcentcolon &= \mathbb{E}_{q_{\Z\mid\Y;\,\bt}(\cdot\mid \y_i)}\left[D(\Z;\bt)^\top \mu(\Z; \bt)\right],
+\end{align}
+%
+together with the \textit{estimating function}:
+%
+\begin{equation}
+    \psi_{q,c}(\bt;\y_i) = m_q(\y_i; \bt) - c \cdot b_q(\y_i; \bt),
+    \label{eqn:psi-q-c}
+\end{equation}
+where the scalar $c\in [0,1]$ is a continuation parameter whose role will be promptly explained. Thus, the estimating function $\psi_{q,c}$ and the score $s$ differ only by the approximating quantity $q$ and the continuation parameter $c$. The function $\psi_{q,c}$ is thus a computationally friendly approximation of the score function $s$. Note that if $q_{\Z\mid\Y;\,\bt}(\z \mid \y_i) = \delta(\z - g(\y; \bt)))$ is a degenerate Dirac-delta density for some \textit{imputation function} $g: \mathbb{R}^p \times \bm \Theta \to \mathbb{R}^q$, the quantity $m_q$ becomes $m_q(\y_i;\bt) = D(g(\y_i, \bt), \bt)^\top T(\y_i)$, and similarly for $b_q$. That is, our current framework includes another possible strategy of \textit{imputing} the latent variables by a point estimate, which can for instance be the ``maximum a posteriori'' (MAP) value, which is the mode of the posterior density. In general, our framework can involve any approximation of the quantities $m$ and $q$:  it does not require that the approximation be limited to a change in the posterior density. For clarity of exposition, we will however retain the ``approximated density" version. 
+
+Unfortunately, unlike for the score function, the estimating function \eqref{eqn:psi-q-c} is not $0$ in expectation, which will yield biased estimators. A straightforward correction is to subtract from $\psi_{q,c}$ its expectation under the true model $f_{\Y;\,\bt}$, which makes them unbiased by construction, and allows us to define the following (unbiased) Zq estimator.
+
+\begin{definition}[Zq Estimator]
+We define the Zq estimator as the root of the following \textit{sample estimating equations}:
+\begin{equation}
+\Psi_{n;\,q,c}(\bt) \vcentcolon = \frac{1}{n}\sum_{i=1}^n \psi_{q,c}(\bt;\y_i) - \mathbb{E}_{f_{\Y;\,\bt}}\left[\psi_{q,c}(\bt;\Y)\right] = 0.
+\label{eqn:Zq-estimating-equations-sample}
+\end{equation}
+%
+\end{definition}
+Leveraging Z-estimation theory, we will promptly show that Zq estimator is consistent and asymptotically Normal, provided $q$ does not stray too far from $f$. In practice, what consists of `` too far" is surprisingly lenient: it turns out the Zq estimator is surprisingly robust to mis-specification of $q$, and this robustness is controlled for by the continuation factor $c$. 
+
+
+
+\subsection{Asymptotic Theory of the Zq Estimator}
+
+First, write  the corresponding \textit{population estimating equation}
+\begin{equation}
+\Psi_{q,c}(\bt)\;=\;\E_{f_{\Y;\,\bto}}\!\big[\psi_{q,c}(\bt;\Y)\big]\;-\;\E_{f_{\Y;\,\bt}}\!\big[\psi_{q,c}(\bt;\Y)\big],
+\label{eqn:Zq-estimating-equation-population}
+\end{equation}
+and its derivative, the Jacobian:
+\begin{equation}
+    A_{q,c}(\bt)\;:=\;-\nabla_\bt \Psi_{q,c}(\bt) = \mathbb{E}_{f_{\Y;\bt}(\cdot)}\left[\psi_{q,c}(\bt;\Y)s(\bt;\Y)^\top\right].
+\label{eqn:jacobian}
+\end{equation}
+%
+The population equation \eqref{eqn:Zq-estimating-equation-population} is unbiased 
+by construction, regardless of $q$. Its Jacobian \eqref{eqn:jacobian} plays a 
+central role in the asymptotics of the Zq estimator. Unlike in most approximate 
+frameworks, where differentiation through the surrogate posterior is required and 
+often intractable, here the Jacobian takes a remarkably simple form. This makes the 
+Z-estimation framework especially well suited for latent variable models. A derivation of \eqref{eqn:jacobian} is available in Appendix \eqref{math:jacobian}.
+
+\begin{remark}[No need to differentiate through the approximate posterior]
+A key advantage of the Z-estimation approach is that the Jacobian involves only the 
+estimating function and the score, and does not require differentiation through the 
+approximating density $q$. In practice, this means any convenient approximation can be 
+used—amortized variational inference, Laplace approximation, Gaussian quadrature, 
+MAP imputation, or others. While such methods alone generally produce biased estimators, 
+the Zq framework restores unbiasedness and provides a clean asymptotic theory 
+(Thm.~\ref{thm:Zq-asymptotics}), with no need to differentiate through the posterior distribution.
+\end{remark}
+
+
+
+Next, we impose the following standard assumptions for Z-estimation,
+
+\begin{assumption}[Uniform convergence]
+With probability one,
+\[
+\sup_{\bt \in \Theta}\,
+\big\|\,\Psi_{n;\,q,c}(\bt)-\Psi_{q,c}(\bt)\,\big\|
+\;\longrightarrow\;0 \qquad \text{as } n\to\infty.
+\]
+\label{ass:psi-uniform-convergence}
+\end{assumption}
+%
+The following assumption lies at the cornerstone of our estimation theory:
+%
+\begin{assumption}[Nonsingularity]
+    Assume the standard regularity conditions allowing the exchange of derivatives and integrals.    The Jacobian 
+    \(
+        A_{q,c}(\bt) = -\,\nabla_\bt \Psi(\bt)
+    \)
+    is nonsingular at the true value $\bt_0$.
+    \label{ass:jacobian-nonsigular}
+\end{assumption}
+
+
+\noindent Assumption~\ref{ass:psi-uniform-convergence} is standard in Z-estimation: it ensures that the sample estimating equations converge uniformly to their population counterparts, so that asymptotic arguments can be carried out uniformly over the parameter space.  
+
+Assumption~\ref{ass:jacobian-nonsigular} is more restrictive. Nonsingularity of the Jacobian at the true parameter value is used to prove local identifiability and, in turn, both consistency and asymptotic normality of the estimator. In practice, this condition restricts the choice of approximation $q$, since poor surrogates can lead to singularities. For latent variable models, where parameters are often identified only up to an equivalence class, one must adopt a parameterization or impose constraints to ensure that the criterion is well-defined -- exactly as in the MLE framework.  
+
+% Lemma for uniqueness
+% --------------------
+\begin{lemma}[Local Identification ]
+\label{lem:local-id-centered}
+Let $\Theta\subset\mathbb{R}^r$ be open. Suppose $\psi_{q,c}(\cdot;\y)$ is measurable in $\y$
+and continuously differentiable in $\bt$ in a neighborhood of $\bto$, with differentiation under
+the integral sign justified by standard regularity conditions. Notice that the population map \eqref{eqn:Zq-estimating-equation-population} admits $\Psi_{q,c} (\bto)=0$. If the Jacobian $A_{q,c}(\bt)$ satisfies Assumption \eqref{ass:jacobian-nonsigular}, there exists a neighborhood $U$ of $\bto$ such that
+\[
+\{\bt\in U:\ \Psi_{q,c}(\bt)=0\}\;=\;\{\bto\}.
+\]
+In particular, $\bto$ is the unique local solution to $\Psi(\bt)=0$.
+\end{lemma}
+
+\begin{proof}
+By definition,
+$\Psi_{q,c}(\bto)=\E_{f_{\Y;\,\bto}}[\psi_{q,c}(\bto;\Y)]-\E_{f_{\Y;\,\bto}}[\psi_{q,c}(\bto;\Y)]=0$.
+Under the stated regularity, $\Psi_{q,c}$ is $C^1$ near $\bto$, and by assumption
+$-\nabla_\bt\Psi(\bto)=A_{q,c}(\bto)$ is nonsingular. The Implicit Function
+Theorem then yields neighborhoods $U$ of $\bto$ and $V$ of $0$ such that
+$\Psi:U\to V$ is a diffeomorphism. Hence $0$ has the unique preimage $\bto$ in $U$,
+proving \emph{local} uniqueness.
+\end{proof}
+
+
+With these assumptions and standard regularity conditions, we are now ready to state the main Theorem for the asymptotics of the Zq-estimator, which follows straightforwardly from the Z-estimation framework.
+
+% Main Theorem
+% ------------
+\begin{theorem}[The Zq Estimator is Consistent and Asymptotically Normal]
+\label{thm:Zq-asymptotics}
+Fix $c \in [0,1]$ and suppose Assumption \eqref{ass:psi-uniform-convergence} and Assumption \eqref{ass:jacobian-nonsigular} hold. Then the Zq estimator $\hat\bt_n$, solution to \eqref{eqn:Zq-estimating-equations-sample}, satisfies:
+
+\begin{enumerate}
+\item \textbf{Consistency.} $\hat\bt_n \xrightarrow{p} \bt_0$.
+\item \textbf{Asymptotic normality.} 
+\[
+\sqrt{n}\,(\hat\bt_n - \bt_0)
+\;\;\Longrightarrow\;\;
+\mathcal N\!\big(0,\,\Sigma_{q,c}\big),
+\]
+with asymptotic covariance of sandwich form
+\[
+\Sigma_{q,c}
+= A_{q,c}(\bt_0)^{-1}\, B_{q,c}(\bt_0)\, A_{q,c}(\bt_0)^{-\top},
+\]
+where
+\begin{align*}
+A_{q,c}(\bt_0) &= -\,\E_{f_{\Y;\,\bt_0}}\!\Big[\,\{m_q(\Y;\bt_0)-c\,b_q(\Y;\bt_0)\}\, s(\bt_0;\Y)^\top\Big],\\[4pt]
+B_{q,c}(\bt_0) &= \Var_{f_{\Y;\,\bt_0}}\!\Big(m_q(\Y;\bt_0)-c\,b_q(\Y;\bt_0)\Big).
+\end{align*}
+\end{enumerate}
+In particular, $\bt_0$ is a population root of the centered estimating equations for any choice of $q$ that satisfies Assumption \eqref{ass:jacobian-nonsigular}.
+\end{theorem}
+
+\begin{proof}
+
+By Assumption \eqref{ass:psi-uniform-convergence}, we have $\Psi_n \to \Psi$.
+
+Now, by Assumption \eqref{ass:jacobian-nonsigular} and lemma \eqref{lem:local-id-centered}, $\Psi_{q,c}(\bt)$ admits a unique root locally around $\bto$.
+We thus satisfy all conditions for consistency and asymptotic normality of a Z-estimator (see Theorem~5.41 in \citealp{vandervaart1998}).
+\todo{BP: Complete if nessessary}
+\end{proof}
+
+
+\subsection{Sufficient conditions for Nonsingularity of the Jacobian}
+
+Because the nonsingularity of the Jacobian plays a critical role in the asymptotics of our estimator, 
+we now propose sufficient conditions for Assumption \eqref{ass:jacobian-nonsigular}, 
+which also shed light on the role of the continuation factor $c$ in the estimating function 
+\eqref{eqn:psi-q-c}. 
+
+We first note that
+\[
+A_{q,c}(\bto)\;=\;-\E\!\big[\psi_{q,c}(\bto;\Y)\,s(\bto;\Y)^\top\big]
+= -\E\!\big[s(\bto;\Y)s(\bto;\Y)^\top\big]\;-\;M_{q,c}(\bto)
+= -\mathcal I(\bto) - M_{q,c}(\bto),
+\]
+where $\mathcal I(\bto)=\E[s(\bto;\Y)s(\bto;\Y)^\top]$ is the Fisher information and
+\[
+M_{q,c}(\bto) \;=\; \E\!\big[(\psi_{q,c}(\bto;\Y)-s(\bto;\Y))\,s(\bto;\Y)^\top\big].
+\]
+
+Thus, $M_{q,c}(\bto)$ quantifies the deviation of $A_{q,c}(\bto)$ from $-\mathcal I(\bto)$. 
+This deviation should remain controlled provided $q_{\Z\mid\Y;\bt}$ is not too far from 
+$f_{\Z\mid\Y;\bt}$. Formally, we require:
+
+\begin{assumption}
+The Fisher information $\mathcal{I}(\bt)$ exists and is nonsingular at $\bt=\bto$, and
+\[
+\bigl\|\mathcal{I}(\bto)^{-1/2}\,M_{q,c}(\bt_0)\,\mathcal{I}(\bto)^{-1/2}\bigr\|_{op} < 1.
+\]
+\label{ass:M-whitened-smaller-1}
+\end{assumption}
+
+\begin{remark}[Interpretation]
+The whitening by $\mathcal{I}(\bto)^{-1/2}$ makes the deviation unitless, so that 
+$\|\mathcal{I}(\bto)^{-1/2}M_{q,c}(\bt_0)\mathcal{I}(\bto)^{-1/2}\|_{op}<1$ expresses 
+the approximation error on the natural scale of the model. 
+Intuitively, the error must not overwhelm the Fisher information, which ensures 
+the corrected Jacobian remains invertible. 
+In practice this is quite mild and allows for surprisingly large mis-specification of $q$.
+\end{remark}
+
+Under Assumption \eqref{ass:M-whitened-smaller-1}, nonsingularity follows directly:
+
+\begin{lemma}[Nonsingularity via Neumann series]
+Define
+\[
+A_{q,c}(\bt_0)\;=\;-\mathcal I(\bto) \;-\; M_{q,c}(\bt_0).
+\]
+
+If Assumption \eqref{ass:M-whitened-smaller-1} holds, then $A_{q,c}(\bt_0)$ is invertible.
+\end{lemma}
+
+\begin{proof}
+Set $\widetilde M := \mathcal I(\bto)^{-1/2} M_{q,c}(\bt_0)\,\mathcal I(\bto)^{-1/2}$. 
+Since $\mathcal I(\bto)\succ0$, the square root $\mathcal I(\bto)^{\pm 1/2}$ exists. 
+Then
+\[
+A_{q,c}(\bt_0)
+= -\,\mathcal I(\bto)^{1/2}\bigl(I+\widetilde M\bigr)\,\mathcal I(\bto)^{1/2},
+\]
+where $I$ denotes the identity matrix of appropriate dimension.
+
+By Assumption \eqref{ass:M-whitened-smaller-1}, $\|\widetilde M\|_{op}<1$, 
+so the Neumann series converges:
+\[
+\bigl(I+\widetilde M\bigr)^{-1}=\sum_{k=0}^{\infty}(-\widetilde M)^k.
+\]
+Hence $I+\widetilde M$ is invertible, and
+\[
+A_{q,c}(\bt_0)^{-1}
+= -\,\mathcal I(\bto)^{-1/2}\bigl(I+\widetilde M\bigr)^{-1}\mathcal I(\bto)^{-1/2}.
+\]
+Therefore $A_{q,c}(\bt_0)$ is nonsingular.
+\end{proof}
+
+
+\begin{corollary} The scalar $c$ tunes the trade-off between robustness of the identifiability condition ($c=0$) and efficiency (approaching $c=1$ when $q$ is close to the true posterior). 
+Indeed, if $q=f$ and $c=1$, then $\psi_{q,c}=s$, so
+$A_{q,c}(\bt_0)=-I(\bt_0)$, $B_{q,c}(\bt_0)=I(\bt_0)$, hence
+$\Sigma_{q,c}=I(\bt_0)^{-1}$ (we recover MLE efficiency). By continuity, for $q\approx f$ and $c\approx1$,
+$\Sigma_{q,c}$ is close to $I(\bt_0)^{-1}$ (higher efficiency).
+
+\medskip
+Write
+\[
+\widetilde M_{q,c}=\underbrace{\mathcal I^{-1/2}\E[(m_q-s)s^\top]\mathcal I^{-1/2}}_{\widetilde M_{q,0}}
+\;-\;c\,\underbrace{\mathcal I^{-1/2}\E[b_q\,s^\top]\mathcal I^{-1/2}}_{\widetilde B_q}.
+\]
+Then, by the triangle inequality,
+\[
+\|\widetilde M_{q,c}\|_{op}\le \|\widetilde M_{q,0}\|_{op}+c\,\|\widetilde B_q\|_{op}.
+\]
+Thus, in a minimax sense, the Neumann condition $\|\widetilde M_{q,c}\|_{op}<1$ is easiest to satisfy at $c=0$
+(and becomes stricter as $c\uparrow1$). At $c=1$ it typically requires $q$ close to $f$ (indeed
+$\widetilde M_{f,1}=0$). Hence $c$ trades robustness to mis-specification ($c\!\downarrow\!0$) for efficiency ($c\!\uparrow\!1$).
+\end{corollary}
+
+\subsection{Further Theory}
+\todo[inline]{Explore more of interaction between c and q,f: This result is a bit light. Specifically, It would be good  to explore what happens when q=f: if c=1, then it's fine we recover exactly the asymptotic MLE, but what if $c<1$? can we guarantee invertibility for all $c\in [0,1]$? is it "always safe" -- at the cost of efficiency -- to take smaller c, however close we are to true $f$ ?}
+
+\todo[inline]{Relate KL divergence to our result: basically we only need invertible Jacobian. Maybe we can find some bounds on KL divergence between $f$ and $q$.}
+
+\todo[inline]{Clever way to estimate the asymptotic variance without resorting to computing s? bootstrap at fixed encoder? other ideas? For marginal likelihood we have Louis' identity.}
+
+\section{Applications \& Simulations}\label{sec:apps}
+
+\subsection{GLLVM (synthetic)}
+\textbf{Setup.} Standard Poisson–log link GLLVM; simulate $(Y,Z)$ with known $\theta_0$. \\
+\textbf{Estimators.} (i) MAP imputation ($q=\delta$, $c=0$); (ii) same $q$, sweep $c\in[0,1]$; (iii) VAE (ELBO); (iv) Zq–VAE path: $\psi_\alpha=(1-\alpha)\psi_{\text{ELBO}}+\alpha\,\psi_{q,c}$, $\alpha\in[0,1]$. \\
+\textbf{Metrics.} Param RMSE $\|\hat\theta-\theta_0\|$, $\|\bar\psi\|_2$ on holdout, Wald CI coverage (sandwich), $\sigma_{\min}(A_{q,c}(\hat\theta))$. \\
+\textbf{Goal.} Show MAP-$c$ robust at small $c$ and deteriorates as $c\!\uparrow\!1$; show VAE bias; debias along $\alpha\uparrow1$.
+
+\subsection{MNIST (underspecified encoder)}
+\textbf{Setup.} Train VAE (diag-Gaussian encoder), then freeze encoder. \\
+\textbf{Estimators.} (i) VAE baseline; (ii) Zq fine-tune decoder $\theta$ solving $\Psi_{n;q_\phi,c}(\theta)=0$ (try $c\in\{0,0.5,1\}$). \\
+\textbf{Metrics.} IWAE-$k$ NLL (e.g., $k{=}500$), $\|\bar\psi\|_2$, optional FID. \\
+\textbf{Goal.} Reduced $\|\bar\psi\|_2$ and improved/unchanged NLL despite encoder misspecification.
+
+\subsection{Targeted sanity check}
+\textbf{Setup.} Small Gaussian latent model with tractable posterior; set $q=f$. \\
+\textbf{Test.} Sweep $c\in[0,1]$; verify $\sigma_{\min}(A_{f,c}(\hat\theta))>0$ and match MLE at $c{=}1$.
+
+
+
+
+% ----------------------------------
+
+\newpage
+\bibliography{references} 
+\newpage
+\appendix
+\input{appendix_A}
+\input{appendix_B}
+
+\end{document}

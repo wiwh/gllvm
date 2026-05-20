@@ -1,0 +1,53 @@
+\section{Style guide}
+
+
+\paragraph{Canonical definitions.}
+\[
+m_\bt(\y)\;:=\;\E_{f_{\Z\mid\Y;\bt}(\cdot\mid \y)}\!\big[D(\Z,\bt)^\top T(\y)\big],
+\qquad
+b_\bt(\y)\;:=\;\E_{f_{\Z\mid\Y;\bt}(\cdot\mid \y)}\!\big[D(\Z,\bt)^\top \mu_\bt(\Z)\big].
+\]
+
+\paragraph{Surrogate–posterior (variational) counterparts.}
+\[
+m_\bt^{(q_\phi)}(\y)\;:=\;\E_{q_\phi(\Z\mid \y;\bt)}\!\big[D(\Z,\bt)^\top T(\y)\big],
+\qquad
+b_\bt^{(q_\phi)}(\y)\;:=\;\E_{q_\phi(\Z\mid \y;\bt)}\!\big[D(\Z,\bt)^\top \mu_\bt(\Z)\big].
+\]
+
+\paragraph{Centered estimating equation you use.}
+Your centered moment uses the \emph{marginal} centering term that avoids the posterior:
+\[
+\Psi(\bt;\y)\;=\;m_\bt^{(q_\phi)}(\y)\;-\;B(\bt),
+\qquad
+B(\bt)\;:=\;\E_{f_\Z}\!\big[D(\Z,\bt)^\top \mu_\bt(\Z)\big].
+\]
+Empirical version:
+\[
+\widehat{\Psi}_n(\bt)\;=\;\frac{1}{n}\sum_{i=1}^n m_\bt^{(q_\phi)}(\y_i)\;-\;B(\bt)\;\overset{!}{=}\;0.
+\]
+If \(B(\bt)\) is itself evaluated by MC with \(S\) prior draws \(\{Z^{(s)}\}_{s=1}^S\),
+\[
+\widehat{B}_S(\bt)\;:=\;\frac{1}{S}\sum_{s=1}^S D(Z^{(s)},\bt)^\top \mu_\bt(Z^{(s)}),
+\qquad
+\widehat{\Psi}_{n,S}(\bt)\;=\;\frac{1}{n}\sum_{i=1}^n m_\bt^{(q_\phi)}(\y_i)\;-\;\widehat{B}_S(\bt).
+\]
+
+\paragraph{If you prefer tildes.}
+You \emph{can} use tildes for “approximated-by-\(q\)”:
+\(\widetilde{m}_\bt(\y)\equiv m_\bt^{(q_\phi)}(\y)\), \(\widetilde{b}_\bt(\y)\equiv b_\bt^{(q_\phi)}(\y)\).
+If you do, keep hats for MC: \(\widehat{\widetilde{m}}_\bt(\y)\) (MC of a variational expectation) and \(\widehat{B}_S(\bt)\) (MC of the marginal term).
+
+\paragraph{One-line style guide (recommended).}
+\[
+\boxed{
+\begin{aligned}
+&\textbf{Exact (posterior }f): && m_\bt,~ b_\bt \\
+&\textbf{Surrogate }(q_\phi): && m_\bt^{(q_\phi)},~ b_\bt^{(q_\phi)} \\
+&\textbf{MC estimates:} && \widehat{m}_\bt^{(q_\phi)},~ \widehat{b}_\bt^{(q_\phi)},~ \widehat{B}_S \\
+&\textbf{Centered moment:} && \Psi(\bt;\y)=m_\bt^{(q_\phi)}(\y)-B(\bt),\;\;\widehat{\Psi}_n(\bt)=\frac1n\sum_i m_\bt^{(q_\phi)}(\y_i)-B(\bt).
+\end{aligned}}
+\]
+
+\paragraph{Minimal drop-in rewrite of your section.}
+Replace occurrences of \(m_\bt(\y_i)\) in the algorithmic (approximate) part by \(m_\bt^{(q_\phi)}(\y_i)\); keep \(B(\bt)\) exact (or denote \(\widehat{B}_S(\bt)\) if MC). This makes the role of \(q_\phi\) explicit and preserves clean semantics for hats/MC.

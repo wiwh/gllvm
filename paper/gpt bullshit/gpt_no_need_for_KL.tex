@@ -1,0 +1,63 @@
+\section{no need for kl}
+\paragraph{Yes — that’s the right stance.}
+All the asymptotic quantities in our framework depend on the \emph{posterior perturbation}
+\[
+\delta(Y)\;\vcentcolon=\;m_{\bt_0}^q(Y)-m_{\bt_0}^\star(Y),\qquad
+m_{\bt_0}^\star(Y)=\E\!\big[D(Z,\bt_0)^\top T(Y)\mid Y\big],
+\quad
+m_{\bt_0}^q(Y)=\E_{q_{\bt_0}(Z\mid Y)}\!\big[D(Z,\bt_0)^\top T(Y)\big].
+\]
+We never need to choose a particular divergence for theory: \emph{we analyze everything through \(\delta\)}.
+
+\medskip
+\noindent\textbf{Framework (no divergences needed).}
+\[
+A_q \;=\; A^\star - \E\!\big[\delta\,s_0^\top\big],\qquad
+B_q \;=\; B^\star + \Var(\delta)+2\,\Cov(m_{\bt_0}^\star,\delta),
+\]
+with \(s_0=s(\bt_0;Y)\), \(A^\star=-\E[m_{\bt_0}^\star s_0^\top]\), \(B^\star=\Var(m_{\bt_0}^\star)\).
+After Fisher normalization (\(\widetilde A=I^{-1/2}AI^{-1/2}\), etc.),
+\[
+\|\widetilde A_q-\widetilde A^\star\|_{\op}\;\le\; \sqrt{r}\,\|\tilde\delta\|_{L^2},\qquad
+\|\widetilde B_q-\widetilde B^\star\|_{\op}\;\le\; \|\tilde\delta\|_{L^2}^2 + 2\,\|\tilde m^\star\|_{L^2}\,\|\tilde\delta\|_{L^2},
+\]
+so \(\Sigma_q=A_q^{-1}B_qA_q^{-\top}\) varies \emph{continuously} with \(\|\delta\|_{L^2(P_Y)}\).  
+This already gives a complete, encoder-derivative–free perturbation theory.
+
+\medskip
+\noindent\textbf{Optional: relating \(\delta\) to divergences (\emph{for users, not required in the paper}).}
+For each \(y\), let \(p(\cdot|y)=f_{Z\mid Y;\bt_0}(\cdot|y)\), \(q(\cdot|y)=q_{\bt_0}(\cdot|y)\), and
+\(g_y(z)=D(z,\bt_0)^\top T(y)\). Then
+\[
+\delta(y)=\E_q[g_y]-\E_p[g_y].
+\]
+Several standard bounds turn \(|\delta(y)|\) into a divergence of \(q(\cdot|y)\) from \(p(\cdot|y)\):
+
+\begin{align*}
+\text{(i) }\;&\textbf{Chi-square bound:}&
+|\E_q[g_y]-\E_p[g_y]|
+&\le \sqrt{\Var_p(g_y)}\,\sqrt{\chi^2\!\big(q\|p\big)}.\\[3pt]
+\text{(ii) }\;&\textbf{Pinsker/TV bound:}&
+|\E_q[g_y]-\E_p[g_y]|
+&\le 2\,\|g_y\|_\infty\,\mathrm{TV}(q,p)
+\ \le\ 2\,\|g_y\|_\infty\,\sqrt{\tfrac12\,\mathrm{KL}(q\|p)}.\\[3pt]
+\text{(iii) }\;&\textbf{Wasserstein (if $g_y$ is $L$–Lipschitz):}&
+|\E_q[g_y]-\E_p[g_y]|
+&\le L(y)\,W_1(q,p).
+\end{align*}
+
+Integrating over \(Y\) yields \(L^2(P_Y)\) bounds, e.g.
+\[
+\|\delta\|_{L^2}^2
+=\E\big[\,|\E_q[g_Y]-\E_p[g_Y]|^2\,\big]
+\ \le\ \E\!\big[\Var_p(g_Y)\,\chi^2(q\|p\mid Y)\big],
+\quad
+\chi^2(q\|p\mid Y)\vcentcolon=\chi^2\!\big(q(\cdot|Y)\,\|\,p(\cdot|Y)\big),
+\]
+and \(\chi^2 \le e^{\mathrm{KL}}-1\) if one prefers KL. Plugging any such bound into the \(\|\tilde\delta\|_{L^2}\) terms above turns divergence control into variance control—\emph{without} differentiating through the encoder.
+
+\medskip
+\noindent\textbf{What to say in the paper.}
+\begin{quote}
+\emph{We quantify encoder misspecification entirely via the function-level error \(\delta(Y)=m_{\bt_0}^q(Y)-m_{\bt_0}^\star(Y)\). All asymptotic quantities depend continuously on \(\|\delta\|_{L^2(P_Y)}\), and no encoder derivatives are ever required. While one may upper bound \(\|\delta\|_{L^2}\) using standard divergences between \(q(\cdot|Y)\) and the true posterior \(f_{Z\mid Y;\bt_0}(\cdot|Y)\) (e.g., via Pinsker or chi-square), such choices are application-specific and orthogonal to our framework.}
+\end{quote}

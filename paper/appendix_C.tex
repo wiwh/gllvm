@@ -1,0 +1,41 @@
+\section*{Appendix C: Implementation Details}
+
+In practice, we implement our estimator in PyTorch by leveraging automatic differentiation to compute both the standard autoencoder (AE) gradient and our Fisher-consistent estimating equation gradient, and combine them using a convex interpolation.
+
+Recall that our estimating equation is defined as:
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e(\Y_i, \bt)) 
+=
+\mathbb{E}_{\Y \sim f_\bt} \left[ \psi_\bt(\Y, e(\Y, \bt)) \right],
+\]
+where \( \psi_\bt(y, z) = T(y) \cdot \partial \eta(z, \bt)/\partial \bt \) is our score-like function, and \( \eta(z, \bt) \) is the decoder's linear predictor. The encoder \( z = e_\phi(y) \) is implemented as a differentiable neural network.
+
+To ensure stable training while maintaining statistical consistency, we define a hybrid estimating equation as a convex combination of the autoencoder's empirical moment and our model-based expectation:
+\[
+\text{LHS} = \alpha \cdot \text{RHS}_{\text{AE}} + (1 - \alpha) \cdot \text{RHS}_{\text{SME}},
+\]
+where:
+\begin{itemize}
+  \item \( \text{RHS}_{\text{AE}} = \frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e_\phi(\Y_i)) \) is the usual autoencoder gradient term,
+  \item \( \text{RHS}_{\text{SME}} = \mathbb{E}_{\Y^\star \sim f_\bt} [\psi_\bt(\Y^\star, e_\phi(\Y^\star))] \) is estimated using Monte Carlo samples from the model.
+\end{itemize}
+
+This leads to the decoder update:
+\[
+\nabla_\bt \mathcal{L} = \alpha \cdot \nabla_\bt \mathcal{L}_{\text{AE}} + (1 - \alpha) \cdot \nabla_\bt \mathcal{L}_{\text{SME}}.
+\]
+
+\paragraph{Implementation Details.}
+To compute this in PyTorch, we proceed as follows:
+\begin{enumerate}
+    \item Perform a forward pass through the encoder and decoder to obtain reconstructed outputs and compute the AE loss.
+    \item Backpropagate the AE loss using \verb|loss.backward(retain_graph=True)|. This populates the gradients for both the encoder (\( \phi \)) and decoder (\( \theta \)).
+    \item Clone and store the decoder gradients (i.e., \verb|p.grad.clone()| for each \verb|p in decoder.parameters()|) as the AE component.
+    \item Using \verb|torch.no_grad()|, sample synthetic data \( \Y^\star \sim f_\theta \) from the decoder, and encode these samples with \verb|e_\phi(\Y^\star)| without tracking gradients.
+    \item Compute \( \psi_\bt(\Y_i, e_\phi(\Y_i)) \) and \( \psi_\bt(\Y^\star, e_\phi(\Y^\star)) \), and define the SME loss as their (batchwise) difference.
+    \item Backpropagate the SME loss to accumulate the SME gradient into the decoder’s parameter \verb|.grad|.
+    \item Linearly interpolate the stored AE and SME decoder gradients using \( \alpha \), and replace the decoder gradients with the weighted sum.
+    \item Update decoder and encoder parameters using their respective optimizers. Only the AE gradient is used to update the encoder.
+\end{enumerate}
+
+This approach enables the encoder to be trained using stable AE-style gradients, while the decoder is progressively corrected toward the Fisher-consistent solution. The interpolation parameter \( \alpha \in [0, 1] \) can be annealed during training to start with AE-like behavior and converge to the statistically principled estimator.

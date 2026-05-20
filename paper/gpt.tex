@@ -1,0 +1,113 @@
+\begin{proposition}[Exact path for $q=f$]
+Assume $q=f$. Let
+\[
+m_f(\y;\bt)=\E[D(\Z;\bt)^\top T(\y)\mid Y=\y],\quad
+b_f(\y;\bt)=\E[D(\Z;\bt)^\top \mu(\Z;\bt)\mid Y=\y],
+\]
+and $s(\bt;\y)=m_f(\y;\bt)-b_f(\y;\bt)$. With
+\[
+A_{q,c}(\bt)\;:=\;\E_{f_{\Y;\bt}}\!\big[\psi_{q,c}(\bt;\Y)\,s(\bt;\Y)^\top\big],\qquad
+\psi_{q,c}=m_q-c\,b_q,
+\]
+we have, at $\bt=\bt_0$,
+\[
+A_{f,c}(\bt_0)\;=\;\mathcal I(\bt_0)\;-\;(1-c)\,C,\qquad
+\mathcal I(\bt_0)=\E\big[s(\bt_0;\Y)s(\bt_0;\Y)^\top\big],
+\]
+where
+\[
+C\;:=\;\E\!\big[\Cov\!\big(a(\Z),\,c(\Y,\Z)\,\big|\,\Y\big)\big],\quad
+a(\Z):=D(\Z;\bt_0)^\top\mu(\Z;\bt_0),\;
+c(\Y,\Z):=D(\Z;\bt_0)^\top\!\big(T(\Y)-\mu(\Z;\bt_0)\big).
+\]
+In particular, $A_{f,1}(\bt_0)=\mathcal I(\bt_0)$ and
+$A_{f,0}(\bt_0)=\mathcal I(\bt_0)-C$.
+\end{proposition}
+
+\begin{proof}
+Since $m_f=s+b_f$, 
+$A_{f,c}=\E[(m_f-c\,b_f)s^\top]=\E[ss^\top]+(1-c)\E[b_f s^\top]=\mathcal I+(1-c)M$,
+with $M:=\E[b_f s^\top]$.
+By the law of total covariance (matrix form),
+\[
+\E[b_f s^\top]=\E\!\big[\E[a\mid Y]\,\E[c\mid Y]^\top\big]
+=\E[ac^\top]-\E[\Cov(a,c\mid Y)].
+\]
+But $\E[c\mid Z]=D(Z;\bt_0)^\top(\E[T(Y)\mid Z]-\mu(Z;\bt_0))=0$, hence $\E[ac^\top]=0$.
+Thus $M=-\,\E[\Cov(a,c\mid Y)]= -C$, and $A_{f,c}=\mathcal I-(1-c)C$.
+\end{proof}
+
+\begin{theorem}[Sufficient condition: no loss of identifiability along $c\!\downarrow\!0$]
+Let $\widetilde C:=\mathcal I(\bt_0)^{-1/2}\,C\,\mathcal I(\bt_0)^{-1/2}$. If
+\[
+\|\widetilde C\|_{\mathrm{op}}<1,
+\]
+then $A_{f,c}(\bt_0)$ is invertible for all $c\in[0,1]$, with
+\[
+A_{f,c}(\bt_0)
+=\mathcal I^{1/2}\!\Big(I-(1-c)\,\widetilde C\Big)\mathcal I^{1/2},\qquad
+A_{f,c}(\bt_0)^{-1}
+=\mathcal I^{-1/2}\sum_{k=0}^{\infty}(1-c)^k\,\widetilde C^{\,k}\,\mathcal I^{-1/2}.
+\]
+In particular, $A_{f,1}(\bt_0)=\mathcal I(\bt_0)$ and $A_{f,0}(\bt_0)=\mathcal I(\bt_0)-C$ remain nonsingular.
+\end{theorem}
+
+\begin{proof}
+Write $A_{f,c}=\mathcal I^{1/2}\!\big(I-(1-c)\widetilde C\big)\mathcal I^{1/2}$. 
+If $\|\widetilde C\|_{\mathrm{op}}<1$, then $\| (1-c)\widetilde C \|_{\mathrm{op}}<1$
+for all $c\in[0,1]$, so $I-(1-c)\widetilde C$ is invertible via the Neumann series.
+\end{proof}
+
+\begin{remark}[Interpretation]
+$C$ is the (averaged) conditional cross-covariance between the “centering” part $a(\Z)$
+and the residual $c(\Y,\Z)$. The whitened bound $\|\widetilde C\|_{\mathrm{op}}<1$ is a
+natural “not-too-collinear” condition. It automatically holds with slack when $a(\Z)$ and
+$c(\Y,\Z)$ are weakly correlated given $Y$, and becomes easiest at $c=0$.
+\end{remark}
+
+
+% Proxy-orthogonalization without the true score
+\newcommand{\Ps}{\Psi_{n;q,c}}
+\newcommand{\sqt}{\tilde s_q}
+
+\paragraph{Definition (proxy projection).}
+Let \(\sqt(\y;\bt):=m_q(\y;\bt)-b_q(\y;\bt)\).
+Define the projected centering term
+\[
+b_q^\perp(\y;\bt)\ :=\ b_q(\y;\bt)\;-\;\Gamma_q(\bt)\,\sqt(\y;\bt),
+\qquad
+\Gamma_q(\bt)\ :=\ \Big(\E[\sqt\sqt^\top]\Big)^{-1}\,\E[\sqt b_q^\top],
+\]
+where expectations are w.r.t.\ \(f_{\Y;\bt}\) (use sample means in practice).
+
+\paragraph{New estimating function.}
+\[
+\psi^{\perp}_{q,c}(\bt;\y)\ :=\ m_q(\y;\bt)\;-\;c\,b_q^\perp(\y;\bt)
+\;=\; \sqt(\y;\bt)\;+\; (1-c)\,b_q^\perp(\y;\bt).
+\]
+
+\paragraph{Jacobian decomposition at }\(\bt_0\).
+With \(A^{\perp}_{q,c}(\bt):=\E[\psi^{\perp}_{q,c}(\bt;\Y)\,s(\bt;\Y)^\top]\),
+\[
+A^{\perp}_{q,c}(\bt_0)\ =\ \mathcal I(\bt_0)\;-\;(1-c)\,C_q^\perp,
+\quad
+C_q^\perp\ :=\ \E\!\big[\Cov\!\big(a_q(\Z),\,c_q(\Y,\Z)\,\big|\,\Y\big)\big],
+\]
+with \(a_q:=D^\top\mu\!-\!\Gamma_q\sqt\), \(c_q:=D^\top(T-\mu)\).
+Thus the destabilizing term is the \emph{residual} covariance after projecting \(b_q\) on \(\sqt\).
+
+\paragraph{Sample implementation.}
+Given data \(\{y_i\}_{i=1}^n\),
+\[
+\widehat\Gamma_q(\bt)\ =\ 
+\Big(\tfrac1n\sum_i \sqt(y_i;\bt)\sqt(y_i;\bt)^\top\Big)^{-1}
+\Big(\tfrac1n\sum_i \sqt(y_i;\bt)\,b_q(y_i;\bt)^\top\Big),
+\]
+\(\ b_q^\perp(y_i;\bt)=b_q(y_i;\bt)-\widehat\Gamma_q(\bt)\sqt(y_i;\bt)\),
+\(\ \psi^{\perp}_{q,c}(y_i;\bt)=m_q(y_i;\bt)-c\,b_q^\perp(y_i;\bt).\)
+
+\paragraph{Why this helps.}
+We cannot make \(\E[b_q s^\top]=0\) without the true score, but replacing \(b_q\) by
+\(b_q^\perp\) minimizes \(\E\|\Pi_{\mathrm{span}(\sqt)} b_q\|^2\) and shrinks the whitened
+perturbation \(\mathcal I^{-1/2}(\E[b_q s^\top])\mathcal I^{-1/2}\) by removing the part of \(b_q\)
+most aligned with the available score-like direction \(\sqt\).

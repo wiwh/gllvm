@@ -1,0 +1,69 @@
+\paragraph{Short answer.}
+“$m$ and $b$ look similar’’ is \emph{neither} automatically good nor automatically bad.  
+What matters for identifiability is \emph{their correlation with the score} $s(\bt_0;Y)$, because
+\[
+A_c(\bt_0)\;=\;-\E\!\big[(m_q-c\,b_q)\,s^\top\big],\qquad s=s(\bt_0;Y).
+\]
+You lose local uniqueness precisely when $(m_q-c\,b_q)$ is (nearly) \emph{orthogonal} to $s$ in $L^2(P_Y)$, i.e. when $\E[(m_q-c\,b_q)\,s^\top]\approx 0$.
+
+\paragraph{Scalar intuition (one-dimensional $\bt$).}
+Write random scalars $m,b,s$ (all centered). If $m\approx \alpha\,b$ in $L^2$, then
+\[
+A_c\;\approx\;-\E[(\alpha-c)\,b\,s]\;=\;-(\alpha-c)\,\E[b\,s].
+\]
+\emph{Risk:} if you pick $c\approx \alpha$ and $\E[b\,s]\neq 0$, then $A_c\approx 0$ and the sample equations will exhibit multiple nearby roots (ill-conditioned Jacobian).  
+\emph{Safe region:} stay away from $c=\alpha$, unless you know $q$ is oracle ($m=s+b$, $b\parallel s$) so that choosing $c=1$ gives $A_1=-I$.
+
+\paragraph{Vector formulation (general $r$).}
+Let $M_1=\E[m_q s^\top]$, $M_2=\E[b_q s^\top]$. Then
+\[
+A_c\;=\;-\big(M_1-c\,M_2\big).
+\]
+If $m_q\simeq B\,b_q$ in $L^2$ for some matrix $B$ (i.e.\ they “share a lot’’), then $M_1\simeq B\,M_2$ and
+\[
+A_c\;\simeq\;-\big(B-cI\big)M_2.
+\]
+\emph{Risk:} choosing $c$ near any singular value of $B$ pushes $A_c$ toward singularity (identifiability loss).  
+\emph{Moral:} similarity of $m$ and $b$ is safe \emph{only if} their difference still correlates with $s$. Otherwise, subtracting them (large $c$) can cancel the very component that identifies the parameter.
+
+\paragraph{What is always safe (misspecification).}
+Without any alignment assumptions between $m_q$ and $b_q$ relative to $s$,
+\[
+\|\widetilde M_c\|_{\op}\;=\;\Big\|I^{-1/2}\E[(m_q-c\,b_q-s)s^\top]I^{-1/2}\Big\|_{\op}
+\;\le\;\|\widetilde M^{(1)}\|_{\op}+c\,\|\widetilde M^{(2)}\|_{\op},
+\]
+so the \emph{minimax} (worst–case) lower bound on the Jacobian margin
+$\sigma_{\min}(A_c)\ge \lambda_{\min}(I)\big(1-\|\widetilde M_c\|_{\op}\big)$
+is maximized at $c=0$. This is why $c=0$ is the most \emph{stable} default when $q\neq f$.
+
+\paragraph{When similarity \emph{helps}.}
+At the oracle ($q=f$, exponential family), $m=s+b$ and $b$ is the “nuisance’’ perfectly aligned to be removed:
+\[
+m-c\,b\;=\;s+(1-c)\,b,\qquad c=1\Rightarrow m-b=s,\ \ A_1=-I.
+\]
+So here the fact that $m$ and $b$ “share a lot’’ is \emph{good}: taking $c=1$ exactly removes $b$ and recovers MLE.
+
+\paragraph{A clean, checkable safety test (score–free).}
+At a provisional $\tilde\bt$, compute the empirical Jacobian of the \emph{centered} map
+\[
+\widehat\Psi_c(\bt)\;=\;\frac1n\sum_{i=1}^n\big(m_q-c\,b_q\big)(\y_i;\bt)\;-\;\widehat{\E}_\bt\big[m_q-c\,b_q\big],
+\]
+by finite differences (no score needed). If $\sigma_{\min}(\widehat A_c)$ is small or $\kappa(\widehat A_c)$ explodes as you increase $c$, you are subtracting “too similar” objects in a way that cancels correlation with $s$—back off $c$.
+
+\paragraph{A tiny lemma that formalizes “too similar $\Rightarrow$ danger”.}
+Let $P_s$ be the $L^2(P_Y)$ orthogonal projector onto $\mathrm{span}\{s\}$ (in Fisher units).
+If $\|P_s m_q - \alpha\,P_s b_q\|_{L^2}\le \varepsilon$ for some $\alpha\in\R$, then
+\[
+\sigma_{\min}(A_c)\;\le\;\|M_2\|_{\op}\,|\,\alpha-c\,|\;+\;\|I\|^{1/2}\,\varepsilon.
+\]
+Thus, when the \emph{score-aligned} components of $m$ and $b$ are almost proportional (small $\varepsilon$), choosing $c$ near $\alpha$ makes $A_c$ nearly singular. (Proof: write $M_1-cM_2=\E[(P_s m_q - c\,P_s b_q)s^\top]+\E[((I-P_s)(m_q-cb_q))s^\top]$ and bound by Cauchy–Schwarz.)
+
+\paragraph{Practical guidance (what to write).}
+\begin{itemize}
+\item \textbf{Start at $c=0$}: most stable in misspecified settings (minimax bound).
+\item \textbf{Anneal $c\uparrow 1$}: only when the encoder is good; monitor $\sigma_{\min}(\widehat A_c)$.
+\item \textbf{ Beware of collinearity}: if $m$ and $b$ are nearly proportional in their score-aligned components, $c$ close to that proportionality constant collapses the bread; avoid that region.
+\end{itemize}
+
+\paragraph{Bottom line.}
+The similarity of $m$ and $b$ is \emph{desirable} at the oracle ($c=1$ removes $b$ and recovers MLE), but under misspecification it can be \emph{dangerous}: subtracting highly similar objects with the wrong $c$ cancels the part aligned with the score and destroys local uniqueness. The scalar $c$ policy “start at $0$, increase until the Jacobian gets ill-conditioned’’ is exactly how you stay on the safe side.

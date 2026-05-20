@@ -1,0 +1,58 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{bm}
+
+\begin{document}
+
+\section*{3. Approximate Estimating Equation (Biased)}
+
+\begin{align*}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \pi_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right] 
+&= 0 \\
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right] 
+&= 0 \\
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\nabla_\theta \log f_\theta(\mathbf{Y}, \mathbf{Z})
+\right]
+\right]
+&\neq 0 \\
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\nabla_\theta \log f_\theta(\bm{y}_i, \mathbf{Z})
+\right] 
+&= 
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\nabla_\theta \log f_\theta(\mathbf{Y}, \mathbf{Z})
+\right]
+\right] \\
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \bm{y}_i)} 
+\left[
+\psi_\theta(\mathbf{Y}, \mathbf{Z})
+\right] 
+&=
+\mathbb{E}_{\mathbf{Y} \sim f_\theta(\bm{y})}
+\left[
+\mathbb{E}_{\mathbf{Z} \sim \tilde{\pi}_\theta(\bm{z} \mid \mathbf{Y})} 
+\left[
+\psi_\theta(\mathbf{Y}, \mathbf{Z})
+\right]
+\right]
+\end{align*}
+
+\end{document}

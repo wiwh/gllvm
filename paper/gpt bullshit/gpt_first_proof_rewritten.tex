@@ -1,0 +1,58 @@
+\paragraph{Setup.}
+Let
+\[
+\psi_q(\y;\bt)=m_q(\y;\bt)-c\,b_q(\y;\bt),\qquad
+A_c(\bt_0)=\E[\nabla_\bt\psi_q(\Y;\bt)]_{\bt=\bt_0},\qquad
+B_c(\bt_0)=\Var(\psi_q(\Y;\bt_0)),
+\]
+and denote the Fisher information by \(I\equiv I(\bt_0)=\Var(s(\bt_0;\Y))\succ0\).
+As shown earlier,
+\[
+A_c(\bt_0)\;=\;-\,I^{1/2}\big(I+\widetilde M_c\big)I^{1/2},\qquad
+\widetilde M_c
+=I^{-1/2}\,\E\!\big[(m_q-c\,b_q-s)\,s^\top\big]\,I^{-1/2}.
+\]
+
+\begin{proposition}[Clean robustness–efficiency knob]
+\label{prop:clean-knob}
+Fix \(\bt_0\). Then:
+\begin{enumerate}
+\item[\textup{(E)}] \textbf{Efficiency at the oracle.} If \(q=f\) (true posterior),
+\[
+m_q(\cdot;\bt_0)-b_q(\cdot;\bt_0)=s(\bt_0;\cdot),\quad
+\Rightarrow\quad
+A_{1}(\bt_0)=-I,\ \ B_{1}(\bt_0)=I,\ \ \Sigma_{1}=I^{-1}.
+\]
+Moreover, \(A_c\to -I\) and \(B_c\to I\) as \(c\uparrow1\); hence \(\Sigma_c\to I^{-1}\).
+\item[\textup{(R)}] \textbf{Robustness under misspecification.} For general \(q\),
+write \(\widetilde M_c=\widetilde M^{(1)}-c\,\widetilde M^{(2)}\) with
+\[
+\widetilde M^{(1)}=I^{-1/2}\E[(m_q-s)\,s^\top]I^{-1/2},\qquad
+\widetilde M^{(2)}=I^{-1/2}\E[b_q\,s^\top]I^{-1/2}.
+\]
+Then
+\[
+\|\widetilde M_c\|_{\op}\ \le\ \|\widetilde M^{(1)}\|_{\op}\ +\ c\,\|\widetilde M^{(2)}\|_{\op}.
+\]
+Hence the sufficient identifiability test
+\(\ \|\widetilde M_c\|_{\op}<1\) is \emph{easiest to satisfy at \(c=0\)}.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}[Proof (one–liners)]
+\textup{(E)}: With \(q=f\), \(m_q-b_q=s\) and thus \(\widetilde M_{1}=0\).
+So \(A_{1}=-I^{1/2} I I^{1/2}=-I\), \(B_{1}=\Var(s)=I\), whence \(\Sigma_{1}=I^{-1}\).
+Continuity of \(c\mapsto A_c,B_c\) yields \(\Sigma_c\to I^{-1}\) as \(c\uparrow1\).
+
+\textup{(R)}: Decompose \(\widetilde M_c\) as stated and apply the triangle inequality.
+Since \(A_c=-I^{1/2}(I+\widetilde M_c)I^{1/2}\), the Neumann condition
+\(\|\widetilde M_c\|_{\op}<1\) guarantees \(A_c\) invertible; the bound is minimized at \(c=0\).
+\end{proof}
+
+\paragraph{Intuition (one paragraph).}
+The term \(b_q\) is a model–based centering computed through the surrogate posterior.
+At \(c=1\) and a good encoder (\(q\approx f\)), it cancels the bias and recovers the score,
+giving MLE efficiency. When \(q\) is misspecified, \(b_q\) can inject error into the Jacobian.
+Reducing \(c\) down-weights reliance on \(b_q\), shrinking the perturbation of \(A_c\) and
+making invertibility easiest to secure. Thus \(c=0\) is most \emph{robust}; \(c=1\) is most
+\emph{efficient} when the encoder is accurate.

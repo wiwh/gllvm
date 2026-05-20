@@ -1,0 +1,582 @@
+\documentclass[twoside,11pt]{article}
+
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+\usepackage{jmlr2e}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{preamble}
+
+% todo
+ \setlength {\marginparwidth }{2cm} % TODO: REMOVE THAT later
+\usepackage{todonotes}
+\definecolor{lightred}{RGB}{120,60,60}
+\definecolor{darkred}{RGB}{255,0,0}
+\newcommand{\proofread}[1]{{\color{lightred}#1}}
+\newcommand{\rewrite}[2]{{\color{darkred}#1}}
+
+\definecolor{gbcolor}{RGB}{220, 160, 180}
+\newcommand{\gb}[2][]{\todo[color=gbcolor, caption={GB}, #1]{#2}}
+\definecolor{jbcolor}{RGB}{180, 220, 200}
+\newcommand{\jb}[2][]{\todo[color=jbcolor, caption={JB}, #1]{#2}}
+
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+% Heading arguments are {volume}{year}{pages}{submitted}{published}{author-full-names}
+
+\jmlrheading{1}{2000}{1-48}{4/00}{10/00}{Blanc}
+
+% Short headings should be running head and authors last names
+
+\ShortHeadings{The AI Trick for GDLVMs}{Blanc \& Bodelet}
+\firstpageno{1}
+
+\begin{document}
+
+\title{The AI Trick: a Consistent Estimator for Deep Generalized Latent Variable Models}
+
+\author{\name Guillaume Blanc \email guillaume.e.blanc@gmail.com
+  \AND
+  \name Julien Bodelet \email julien.bodelet@gmail.com
+  \AND
+  \name Benjamin Poilane \email benjamin@protonmail.com
+}
+
+\editor{Fan Lui Hui} % lol
+
+\maketitle
+
+\begin{abstract}%   <- trailing '%' for backward compatibility of .sty file
+This paper introduces \gb[]{find good name}, a new framework, from theoretical justifications to practical implementations, for consistent estimation of latent variables models. Using the statistical theory of M-estimators and leveraging the universal approximation of neural networks, empowered by technological innovations in auto-diff software, we provide alternatives to variational inference and adversarial methods to estimate deep generative models. We demonstrate this methodology on a non-parametric latent variable model and the traditional MNIST dataset.
+\end{abstract}
+
+\begin{keywords}
+Latent variable models
+\end{keywords}
+
+
+\listoftodos
+
+\newpage
+\section{Notation}
+We write random variables in upper-case letters and function arguments in low-case letters. Bold characters refet to vector or matrix quantities. For instance the density of a vector random variable $\Y$ may be written $f_\bt(\y)$ where $\bt$ is  a vector of parameters.
+
+
+\section{Introduction}
+ Latent variable models are commonly used to capture complex dependencies in multivariate data. Generating a data point $\Y\in \mathcal Y \subseteq \mathbb R^p$ from a latent variable model  involves two steps: (1) a latent (unobserved) variable $\Z\in \mathcal Z \subseteq\mathbb R^q$ is generated from a known prior distribution $\pi(\z)$; (2) given $\Z$, the random variable $\Y|\Z$ is generated from some conditional distribution $f_\bt(\y|\z)$, known up to the parameters $\bt\in\bm\Theta\subseteq \mathbb R^r$\jb{Does it work for nonparametric?}. Thus, the latent variable model is a \textit{generative model} $F_\bt$ for the pair $(\Y, \Z)$:
+%
+\begin{align}
+    \begin{matrix}
+        \hfill\Z &\sim& \pi(\z)\hfill\\
+        \hfill\Y|\Z &\sim& f_\bt(\y|\z)\hfill,
+    \end{matrix}
+    \label{eqn:generative-model-general}
+\end{align}
+%
+where $\Z$ is unobserved.
+% 
+The marginal density $f_\bt(\y)$ of $\Y$ is then obtained by integrating out the latent variable, 
+%
+\begin{equation}
+    f_\bt(\y) = \int_{\mathcal Z} f_\bt(\y|\z)\pi(\z)d\z.
+\end{equation}
+Given $n$ independent data pairs $\{(\Y_i^0, \Z_i^0)\}_{i=1}^n$ from $F_{\bt_0}$, where $\Z_i^0$ are unobserved, an estimate of $\bt_0$ can, in principle, be obtained by maximizing the sample \textit{marginal log-likelihood}, 
+%
+\begin{equation}
+\sum_{i=1}^n l(\bt; \Y_{i}^0)= \sum_{i=1}^n \log\left(\int_{\mathcal Z}f_\bt(\Y_{i}^0|\z)\pi(\z)d\z\right),
+    \label{eqn:marginal-likelihood}
+\end{equation}
+%
+where $l(\bt; \y)$ is the marginal log-likelihood function, which we define for a single observation.
+A chief challenge in estimating latent variable models is that the multiple integrals prevent the direct maximization of \eqref{eqn:marginal-likelihood}; indeed, apart in simple cases which admit analytical expressions in its derivation, even the Expectation-Maximization algorithm, despite its good properties, is computationally too intensive to solve. Alternatives include quadrature of the integral, using lower bounds on the marginal likelihood (VAE...), but these approximation are often not adapted for larger dimensions, and may include severe bias in the estimates.
+%
+Latent variable models are elegant tools for multivariate data analysis, are easy to set up, and are surprisingly general. Identifiability usually requires that the dimension of the latent variable space, $q$, be smaller than that of the feature space, $p$. Far from being a drawback, this constraint enables dimensionality reduction, where a small number of latent variables capture the most salient features of the data. As such, they have been used extensively in deep learning, etc... In the social sciences, they are key tool to estimate a theorized latent construct ($\Z$) from a set of observable features ($\Y|\Z$) that it is assumed to affect. In longitudinal settings, where many observations of the same unit are gathered over time, a latent variable known as random effect can be used to model the correlation between observations on the same unit.
+..... in biostats, they are extensively used as dimensionality reduction techniques.
+
+
+\gb[inline, caption= improve the introduction with other methods]{This approach is used in GLMM, in GLLVM, VAE, GANs, as well as for missing data, etc... Write more.}
+
+\section{The Framework}
+
+
+A Generalized Deep Latent Variable Model (GDLVM)\gb[]{This doesn't exist, this is the model we want ( or not? ) to introduce. Perhaps we want to consider this model as a special case of our estimation strategy. We'll see that later.}, further specifies the conditional density $f_\bt(\y|\z)$, in two ways: (i) given the latent variable $\Z$, the elements $Y_{1}, \dots, Y_{p}$ of $\Y$ are independent, that is $Y_{j} \!\! \perp \!\!  Y_{j'}\vert \Z$, $\forall j\neq j'$. This allows to re-write $f_\bt(\y, \z) = \prod_{j=1}^p f_{\bt, j}(y, \z)$, where (ii) the conditional densities $f_{\bt, j}(\y|\z)$ belong to the exponential family of distributions, that is
+
+\begin{equation}
+   f_{\bt, j}(y|\z) = \exp(\{y\gamma - b_j(\gamma))\}/a_j(\phi_j) + c_j(y, \gamma)),
+   \label{eqn:conditional-distribution}
+\end{equation}
+for some known functions $\{a_j, b_j, c_j\}_{j=1}^p$, arbitrary scale parameters $\{\phi_j\}_j^p$ and where $\gamma$ is called the cannonical parameter, which in turn entirely depends on $\bt$ and $\z$. 
+
+\gb[inline]{Write more about this framework, how general it remains, etc etc. and how widely it is, in fact, used. Then introduce the maximum likelihood principle}
+
+%\gb[inline]{Should we write $(\Y^{(i)}, \Z^{(i)})$ instead of $(\Y_i, \Z_i)$, when referring to the observations from $F_{\bt_0}$, to avoid the confusion with the $j$th element of the random variable $\Y$, i.e. $Y_j$? The only difference is the context in which it is used, and the bold letter for the observations from $F_{\bt_0}$. It can be useful to help the reader here. Alternatively, we could write $(\Y_i^0, \Z_i^0)$ to remind the reader it is from $F_{\bt_0}$.}
+
+
+Other methods consider performing simultaneous inference on $\{\z_{i}\}_{i=1}^n$ and $\bt$ treating the latent variables as parameters, by maximizing the so-called sample \textit{extended log-likelihood}
+%
+\begin{equation}
+    \sum_{i=1}^n l(\bt, \z_{i}; \Y_{i}^0) = \sum_{i=1}^n\log(f_\bt(\Y_{i}^0|\z_{i})\pi(\z_{i})),
+    \label{eqn:extended-likelihood}
+\end{equation}
+%
+where $l(\bt, \z; \y)$ is the extended log-likelihood function for a single observation. Compared with $l(\bt; \y)$, $l(\bt, \z; \y)$ does away with the integrals altogether, which makes it tractable. Note that if $\z_i$ were observed, maximizing \eqref{eqn:extended-likelihood} with respect to $\bt$ would yield the maximum likelihood estimator of $\bt_0$. What's more, the extended likelihood \eqref{eqn:extended-likelihood} is often used to estimate the unknown $\Z_i^0$, obtained as the maximizer of \eqref{eqn:extended-likelihood} with respect to $\z_i$, holding $\bt$ at some estimate of $\bt_0$. However, unless stringent criteria are met\gb{regarding the independence of the estimates of $\Z$ and $\bt$}, simultaneously maximizing \eqref{eqn:extended-likelihood} with respect to both $\bt$ and $\{\z_{i}\}_{i=1}^n$ is not viable. In simple models, a so-called \textit{canonical} scale for the latent variables may exist, aiming to make the estimates of $\bt_0$ and $\Z_i^0$ independent and enabling their simultaneous estimation using \eqref{eqn:extended-likelihood}, but this scale may be hard to define and may not even exist in more complex models \gb{cite the extended likelihood approach that defines which criteria are considered}. Other methods may include regularization of \eqref{eqn:extended-likelihood},  but the regularization parameter introduce bias in the estimates and need to be tuned, complicating the analysis \gb{cite Hastie}.
+
+In the following, we solve these challenges faced by $l(\bt, \z;\y)$ using the approximation-imputation (AI) trick, which is an alternative to simultaneous maximization of $\bt$ and $\z_i$ that keeps the good properties and ease of computation of the extended likelihoof function, while providing guarantees of consistent estimation.
+
+\section{Estimation}
+
+\iffalse
+\subsection{The EM Algorithm}
+The EM algorithm proceeds in two steps: for a given $\bt^t$, the next iterate $\bt^{t+1}$ is obtained as follows:
+
+\begin{itemize}
+    \item [E-step]: define
+    \begin{equation}
+        Q(\bt | \bt^t) = \sum_{i=1}^n E_{\Z\sim f_{\bt^{t}}(\z|\Y_i^0)}[l(\bt, \Z_i;\Y_i^0)],
+        \label{eqn:E-step}
+    \end{equation}
+    \item [M-step]: maximize:
+    \begin{equation}
+        \bt^{t+1} = \underset{\bt}{\text{ argmax }} Q(\bt|\bt^t)
+        \label{eqn:M-step}
+    \end{equation}
+\end{itemize}
+\fi
+
+\subsection{Deriving the Estimating Function}
+
+We are first interested in the estimating function for $\bt$ when $\z$ is known. The estimating function for $\bt$ is obtained by taking the partial derivative of the extended likelihood function $l(\bt, \z; \y)$ with respect to $\bt$. This (partial) derivative takes the form of the sum of $p$ familiar GLM scores (assuming $\z$ to be known):
+%
+\begin{equation}
+\bm s(\bt, \z; \y) = \frac{\partial l(\bt, \z;\y)}{\partial \bt}=\sum_{j=1}^p \bm D_j(\bt, \z)\frac{(y_{j} - \mu_j(\bt, \z))}{V_j(\bt, \z)\phi_j},
+    \label{eqn:generalized-linear-models}
+\end{equation}
+%
+%\gb[inline]{Since $\z$ is unknown, our strategy is to impute them by $\e(\y, \bt)$. However, doing so means the estimator is not fisher consistent -- that is, the estimating equations are not 0 in expectation. That's bad. Very bad. Our solution is to brute-force this by substracting their expectation. Yay, clever girl! Is that good? No, not good. Not always identifiable. So, still bad. Sad, very sad. But in fact, we can just realize after three years of trying out stuff that the mu is itself an expectation, so we can separate the estimating equation between a quantity and its expectation under the model, impute it, and VOILA! IT WORKS! NICE! REKABOOMBOOM}
+%
+where, for all $j$, $\mu_j(\bt, \z) = \E_{Y\sim f_\bt(\y|\z)}[Y_{j}|\z] = g_j^{-1}(\eta_j(\bt, \z))$, $\bm D_j(\bt, \z) = \partial \mu_j(\bt, \z)/\partial \bt$, $V_j(\bt, \z)\phi_j = \text{Var}(Y_{j}|\z)$, $g_j$ is a link function, and $\phi_j$ is an additional variance parameter, and where the conditional expectation and variance are taken with respet to the conditional density $f_{\bt,j}(y|\z)$. Writing
+
+\begin{equation}
+    \bm U(\bt, \z;\y) = \sum_{j=1}^p\frac{\bm D_j(\bt, \z) y_{j} }{V_j(\bt, \z)\phi_j},
+    \label{eqn:Psi}
+\end{equation}
+%
+the estimating function \eqref{eqn:generalized-linear-models} can be re-written WLOG as:
+
+%
+\begin{equation}
+\bm s(\bt, \z; \y) = \bm U(\bt, \z; \y) - \E_{\Y\sim f_{\bt}(\y|\z)}\left[\bm U(\bt, \z; \Y)\Large\vert\z \right].
+\label{eqn:estimating-functions-known-z}
+\end{equation}
+%
+This representation highlights a fundamental property of this estimating function is that it is $\bm 0$ in expectation, i.e. it satisfies
+%
+$$
+\E_{\Y \sim f_\bt(\y|\Z)}[\bm s(\bt, \Z; \Y)|\Z] = \bm 0,
+$$
+%
+where the expectation is taken with respect to $f_\bt(\y|\Z)$; that is, the estimating function \eqref{eqn:estimating-functions-known-z} satisfies the first Bartlett identity, one of the fundamental properties for consistent estimation. If the pairs $(\Y_i^0, \Z_i^0)$ were fully observed for all $i$, the maximum likelihood estimator for $\bt_0$, assuming it exists, would be obtained as the root in $\bt$ of
+%
+$\sum_{i=1}^n \bm s(\bt, \Z_i^0; \Y_i^0)$.
+%
+
+ We want to generalize the estimating function \eqref{eqn:estimating-functions-known-z} to the case where the random variable $\Z$ is not observed: it then needs to be marginalized out using its conditional distribution $f_\bt(\z|\y)$. The estimating function then becomes
+%
+\begin{equation}
+\bm s(\bt; \y) = \int_{\mathcal Z}\bm s(\bt, \z; \y)f_\bt(\z|\y)d\z.
+\label{eqn:score_function_marginal}
+\end{equation}
+%
+It is easy to see that when applied to the data $\Y \sim f_\bt(\y)$, this marginal estimating function is still $\bm 0$ in expectation (now on the marginal model):
+%
+\begin{multline}
+\E_{\Y\sim f_\bt(\y)}[\bm s(\bt; \Y)] = \int_{\mathcal Y}\int_{\mathcal Z}\bm s(\bt, \z; \y)f_\bt(\z|\y)d\z f_\bt(\y)d\y 
+\\= \int_{\mathcal Z}\int_{\mathcal Y}\bm s(\bt, \z; \y)f_\bt(\y|\z)d\y \pi(\z) d\z = 0,
+\end{multline}
+%
+where the exchange of the order of integration is justified by Fubini's theorem\gb[]{Make sure it's ok to do so}. Using \eqref{eqn:score_function_marginal} present tremendous difficulties due to the conditional expectation which is almost never tractable. A way forward would be to use variational inference, or other approximations of $\bm s(\bt, \z; \y)$. Here, we propose the following to approximate \eqref{eqn:score_function_marginal}:
+%
+\begin{equation}
+    \bm\Psi(\bt;\y) = \bm U(\bt, \e(\bt, \y); \y) - \E_{\Y\sim f_\bt(\y)}[\bm U(\bt, \e(\bt, \Y); \Y)],
+    \label{eqn:estimating-equations-AI}
+\end{equation}
+\jb[inline]{
+We have it because when $(\Y_i, \Z_i) \sim F_{\bt^0}$ for all $i$,
+\begin{align}
+\frac{1}{n}\sum_{i=1}^n \bm W(\bt, \e(\bt, \Y_i)) \E_{\bt}[\Y_i|\Z_i] \rightarrow
+\E_{(\Y, \Z) \sim F_{\bt^0}}\big[ \bm W(\bt, \e(\bt, \Y)) \E_\bt[\Y|\Z]\big]\\   
+= \E_{(\Y, \Z) \sim F_{\bt^0}}\big[ \bm W(\bt, \e(\bt, \Y)) \Y\big]  
+\end{align}
+}
+
+
+
+
+%
+where $\e(\bt, \Y)$ is an estimator of $\Z$. Unlike approximations using variational inference or gaussian quadrature, the (marginal) expectation of \eqref{eqn:estimating-equations-AI} remains $\bm 0$ when applied to $\Y \sim f_\bt(\y)$:
+%
+\begin{equation}
+    \E_{\Y\sim f_\bt(\y)}[\bm\Psi(\bt;\Y)] = \bm 0.
+\end{equation}
+%
+Our strategy thus involves substituting in $\bm U$ the unknown $\Z$ by $\e(\bt, \Y)$. Finally, we define our estimator of $\bt_0$ to be the root in $\bt$ of $\sum_{i=0}^n \bm\Psi(\bt;\Y_i^0)$, that is, our estimator satisfies
+%
+\begin{equation}
+    \hat\bt = \underset{\bt\in\bm\Theta}{\text{argzero}} \sum_{i=1}^n \bm \Psi(\bt; \Y_i^0).
+    \label{eqn:estimator}
+\end{equation}
+%
+
+\gb[inline]{Is it possible to quantify the approximation error somehow?}
+
+\subsection{Presentation with Marginalization}
+Since $\z$ are unknown, we consider to approximate the scores $\bm s$ by
+%
+\begin{equation}
+ \bm s(\bt; \y) = \E_{\Z\sim q_\bt(\z|\y)}\left[\bm s(\bt, \Z; \y)\right],
+\end{equation}
+%
+where $q_\bt(\z|\y)$ defines a propositional distribution that approximates the true posterior distribution $f_\bt(\z|\y)$. A fundamental problem of $\bm s(\bt; \y)$ is that unless $q_\bt(\z|\y) = f_\bt(\z|\y)$, where the latter is the true posterior, it is not $\bm 0$ in expectation, and therefore does not define a Fisher-consistent estimator. Let's correct this!
+
+The above can be re-written:
+\begin{equation}
+ \bm s(\bt; \y) = \E_{\Z\sim q_\bt(\z|\y)}\left[\bm U(\bt, \Z;\y)\right] - \E_{\Z\sim q_\bt(\z|\Y)}\left[\E_{\Y\sim f_\bt(\y|\Z)}\left[U(\bt, \Z;\Y)\right]\right]
+\end{equation}
+%
+which can be approximated by
+%
+\begin{equation}
+ \bm \Psi(\bt; \y) = \E_{\Z\sim q_\bt(\z|\y)}\left[\bm U(\bt, \Z;\y)\right] - \E_{\Y\sim f_\bt(\y)}\left[\E_{\Z\sim q_\bt(\z|\Y)}\left[U(\bt, \Z;\Y)\right]\right],
+\end{equation}
+%
+which is $\bm 0 $ by definition.
+
+
+
+\subsection{Presentation As an Algorithm}
+
+
+\begin{itemize}
+    \item [A-step]: Approximate the gradient:
+        $$
+        \bm \Psi(\bt, \z; \y) = \bm U(\bt, \z; \y) - \E_{\Z\sim \pi(\z)}\left[\E_{\Y\sim f_\bt(\y|\Z)}\left[\bm U(\bt, \Z;\Y)|\Z\right]\right]
+        $$
+    \item [I-step]: Given current estimate $\bt^t$, impute the gradient:
+        $$
+        \bm\Psi(\bt, \bm \Psi(\bt, \z; \y) = \bm U(\bt, \z; \y) - \E_{\Z\sim \pi(\z)}\left[\E_{\Y\sim f_\bt(\y|\Z)}\left[\bm U(\bt, \Z;\Y)|\Z\right]\right]
+        $$
+    
+\end{itemize}
+
+
+
+
+\subsection{The Approximation-Imputation Trick}
+\gb[inline]{
+WARNING: The following presentation of the A-I trick may be a bit confusing. We keep it as reference, but you may not want to read it to maintain sanity.
+}
+In practice, the latent variables $\Z_i^0$ are not known, and $\bm s(\bt, \Z_i^0, \Y_i^0)$ cannot be computed, for two reasons: \textit{i)} the expectation is taken conditionally on the unknown $\Z_i^0$,  and \textit{ii)} the $\bm U$ function depends itself on $\Z_i^0$. We solve these problems using the Approximation-Imputation (AI) trick:
+
+
+
+
+\begin{itemize}
+    \item[A-step]: In the A-step (approximation), we leverage the knowledge of the (marginal) distribution of $\Z$ to approximate \eqref{eqn:estimating-functions-known-z} by 
+    %
+    \begin{equation}
+    \bm U(\y, \z, \bt) -\E_{\Z\sim \pi(\z)}\left[\E_{\Y\sim f_\bt(\y|\Z)}\left[\bm U(\Y, \Z, \bt)\big|\Z \right]\right],
+    \label{eqn:estimating-functions-known-z-approximated}
+    \end{equation}
+    %
+    removing the dependence of the expectation on $\z$.
+    \jb[inline]{
+    This is justified by the fact that 
+    \begin{equation}
+        \frac{1}{n}\sum_{i=1}^n \left(\E_{\Y\sim f_\bt(\y|\Z_i)}\left[\bm U(\Y, \Z_i, \bt)\big|\Z_i \right] - \E_{\Z\sim\pi(\z)}\left[\E_{\Y\sim f_\bt(\y|\Z)}\left[\bm U(\Y, \Z, \bt)\big|\Z \right]\right]\right) \to \bm 0.
+    \end{equation}
+    (e.g. we can use the central limit theorem). In fact, using the CLT, we can actually quantify the error of this approximation, maybe that can be useful.
+    }
+    \item[I-step]:
+    In the I-step (imputation), we impute the quantity $\z$ in $\bm U$ by an estimate, written as $\z^\ast = \bm e(\y, \bt)$, where $\e: \mathcal Y \times \mathbb R^r \to \mathbb R^q$ is a function of the data and the parameter which we call the \textit{encoder}.
+    \jb[inline]{Here, it would be useful to consider typical convergence rates of $e(\Y, \bt)$ as an estimator of $\Z$. For linear models (GLLVMs) that's easy, but for more complex models, we should check. We could have an argument of the like "convergence as if we knew the true value of $\Z$", similarly to our paper. }
+\end{itemize}
+
+\noindent Using the AI trick on \eqref{eqn:estimating-functions-known-z} yields the following estimating function for the parameter $\bt$:
+%
+\begin{equation}
+\bm \Psi(\y, \bt) = \bm U(\y, \bm e(\y, \bt), \bt) - \E\left[\bm U(\Y, \bm e(\Y, \bt), \bt)\right],
+\label{eqn:estimating-function-AI}
+\end{equation}
+%
+where the expectation is taken with respect to the marginal density $f_\bt(\y)$, making it trivial to estimate using Monte Carlo simulations due to the ease of generating a data-point from $F_\bt$. Notice that the AI-trick effectively removes the dependence on the unknown 
+$\z$. Finally, we define our estimator of $\bt_0$ to be the root of the empirical mean of this function of the data, that is,
+%
+\begin{equation}
+    \hat\bt = \underset{\bt\in\bm\Theta}{\text{argzero}} \sum_{i=1}^n \bm \Psi(\Y_i^0, \bt).
+    \label{eqn:estimator}
+\end{equation}
+%
+
+Note that by construction, $\E\left[ \bm \Psi( \Y, \bt)\right] = 0$, which is the key property to insure (Fisher) consistency of $\hat\bt$. What's more, the estimator \eqref{eqn:estimator} is a  This was indeed the key idea in my thesis \gb{cite thesis}.
+
+\jb[inline]{Here we can have the asymptotic distribution using the sandwich formula for small $p$. For large $p$, using the AI-trick, we could derive other convergence properties. Whatcha think?}
+
+\gb[inline, caption=Convergence of Approximation]{It may appear surprising that the expectation in  \eqref{eqn:estimating-functions-known-z-approximated}, which acts as a centering quantity, does not depend on $i$ -- and thus on the observation. In Theorem 1, we show that the approximation is in fact tight as $n\to\infty$.}
+
+
+\subsection{Cannonical Link Functions}
+In the case of a canonical link function and if $V_j$ is the standard variance function of the assumed conditional distribution for feature $j$, the following equality holds
+%
+$$
+\bm D_j(\z, \bt) = V_j(\z, \bt)\frac{\partial \eta_j(\z, \bt)}{\partial \bt},
+$$
+%
+and \eqref{eqn:Psi} simplifies into
+%
+\begin{equation}
+     \sum_{j=1}^p\frac{\partial \eta_j(\z, \bt)}{\partial \bt}\frac{y_{j} }{\phi_j},
+    \label{eqn:Psi-cannonical}
+\end{equation}
+%
+where, again, $\eta_j(\z, \bt) = g_j(\mu_j(\z, \bt))$. This simplifies the computations, as we do not need to evaluate the quantities $V_j(\z, \bt)$ and $\partial \mu_j(\z, \bt)/\partial \eta_j$.
+
+\section{Examples}
+\subsection{Factor Analysis}
+\gb[inline]{For now, this section is work in progress -- please improve and comment.}
+
+Factor analysis (FA) defines the following generative model for the pair $(\Y, \Z)$:
+
+\begin{align}
+    \begin{matrix}
+        \hfill\Z &\sim& \bm N(\bm 0, \bm I_q)\hfill\\
+        \hfill\Y|\Z &\sim& \bm N(\bm\Lambda\Z, \bm\phi)\hfill,
+    \end{matrix}
+    \label{eqn:generative-model-general}
+\end{align}
+
+
+
+In factor analysis (FA) \gb{Write the generative model} the estimating equations for FA for $\bt$ can be written as
+%
+$$
+\bm s(\bt, \z; \y) = \bm\phi^{-1}(\y - \bm\Lambda\z)\z^\top
+$$
+%
+where $\bm\Lambda$ are the loadings and $\bm\phi$ is the diagonal matrix with diagonal elements $(\phi_1, \dots, \phi_p)$. We recognize that 
+%
+$$
+\bm U(\y, \z, \bt) = \bm\phi^{-1}\y\z^\top
+$$
+%
+We can consider imputing the latent variables by their maximum a posteriori (MAP), given by: 
+$$
+\e(\y, \bt) = (\bm\Lambda \bm\phi^{-1}\bm\Lambda^\top + \bm I_q)^{-1}\bm\phi^{-1}\bm\Lambda^\top\y =\vcentcolon  \bm K \y
+$$
+And thus, the estimating function is
+
+\begin{multline}
+\bm \Psi(\y, \bt) = \bm U(\y, \e(\y, \bt), \bt) - \E[\bm U(\Y, \e(\Y, \bt), \bt)] 
+\\= \bm\phi^{(-1)}\y\y^\top \bm K^\top - \E\left[\bm\phi^{(-1)}\y\y^\top \bm K^\top\right]
+\\= \bm\phi^{(-1)}\y\y^\top \bm K^\top - \bm\phi^{(-1)}\bm\Sigma \bm K^\top,
+\end{multline}
+where $\E[\Y\Y^\top] = \bm\Lambda \bm\Lambda^\top + \bm\phi = \bm \Sigma$. This estimating function is the same as the score function for the MLE of the marginal model.
+
+Furthermore, we can now show that imputing the conditional scores $\bm s$ directly does not work:
+$$
+\bm s(\bt, \e(\y, \bt); \y) = (\y - \bm\Lambda \bm K \y)\y^\top \bm K^\top = \y\y^\top \bm K^\top  - \bm\Lambda \bm K \y \y^\top \bm K^\top 
+$$
+
+We now show that the imputed conditional scores are not 0 in expectation. We can use the following result easily shown using Woodburry's matrix identities:
+
+$$
+\bm \Sigma^{-1} \bm\Lambda = \bm K^\top \Leftrightarrow \bm\Lambda = \bm \Sigma \bm K^\top
+$$
+which is justified since $\bm\Sigma$ is invertible. Replacing $\bm\Lambda$ with this quantity, the estimating functions become
+
+$$
+ \y\y^\top \bm K^\top  - \bm \Sigma \bm K^\top \bm K \y \y^\top \bm K^\top 
+ $$
+
+ with expectation
+$$
+ \bm\Sigma \bm K^\top  - \bm \Sigma \bm K^\top \bm K \bm\Sigma \bm K^\top 
+ $$
+
+Using the Woodburry equality again: $\bm K^\top \bm K = \bm\Sigma^{-1} \bm\Lambda\bm\Lambda^\top \bm\Sigma^{-1}$, the expectatio becomes
+
+$$
+\bm\Sigma \bm K^\top - \bm\Lambda\bm\Lambda^\top \bm K^\top = \bm\Sigma \bm K^\top - (\bm\Sigma - \bm\phi) \bm K^\top = \bm\phi\bm K^\top
+$$
+which is not $0$, proving that the imputed scores (by the MAP) are not 0 in expectation and therefore the estimator is not consistant. Bad, very bad.
+\section{Asymptotic Properties}
+\subsection{Paramatric}
+\subsection{Nonparametric}
+\section{Computation}
+\subsection{Encoder using a NN}
+
+
+Similarly to variational auto-encoders (VAE) \cite{kingma2014autoencoding}, our estimation method we will use an encoder $h: \mathbb R^p \times \mathbb R^q$, which learns a lower-dimensional representation of the data, and a decoder given by $p_\bt(\x|\z)$, which decodes that representation back into the original data format. Our method uses simulated data from the marginal model $p_\bt(\x)$ to learn the encoder parameters $\bm\xi$. One can then encode $\x$ as $\hat\z = h(\x, \bm\xi)$. With the encoded values substituting for the unknown latent variable, we then use a simple loss function to learn the parameters of the decoder. While we are also interested in the imputing values, our method focuses on the good estimation of the parameters of the decoder, which is justified by an M-estimation argument. 
+
+\subsection{Stochastic-Approximation Algorithm and Autograd}
+\section{Applications}
+\subsection{GLMM or Missing Variable}
+\subsection{GLLVM: SNP}
+\subsection{MNIST}
+\section{Conclusion}
+\newpage
+
+\section{Graveyard}
+
+
+\subsection{Estimating Function, new presentation}
+We consider the class of Generalized Estimating Equations (GEE), which can be written as:
+
+\begin{equation}
+\bm\Psi(\y, \z, \bt) = \bm U(\bt, \z; \y) - \E\left[\bm U (\bt, \z, \Y)|\z\right]
+\end{equation}
+
+where
+
+\begin{equation}
+\bm U(\bt, \z;\y) = \frac{\partial\mu}{\partial\bt}\bm V(\bm\mu)^{-1} \y
+\end{equation}
+
+and $\mu = \E[\y|\z]$ and $\V$ is a known variance function . 
+
+
+If $\z$ is known, these have good properties because because they are 0 in expectation, i.e. they satisfy
+
+$$
+\E[\bm\Psi(\y, \z, \bt)|\Z] = 0.
+$$
+
+That is, the estimating equation satisfies the first Bartlett identity, one of the fundamental property for consistent estimation. We want to generalize this to the case where $\Z$ is unknown: the $\Z$ need to be marginalized out by their conditional distribution $\Z|\Y$. The estimating equation becomes
+
+\begin{equation}
+\bm \Psi(\bt;\y) = \int_{\mathcal Z}\bm\Psi(\y, \z, \bt)f_\bt(\z|\y)d\z.
+\label{eqn:gee_marginal}
+\end{equation}
+These still have good properties, for the same reason as before, because their expectation is 0 (now on the marginal model):
+
+\begin{multline}
+\E[\bm\Psi(\y, \bt)] = \int_{\mathcal Y}\int_{\mathcal Z}\bm\Psi(\y, \z, \bt)f_\bt(\z|\y)d\z f_\bt(\y)d\y 
+\\= \int_{\mathcal Y}\int_{\mathcal Z}\bm\Psi(\y, \z, \bt)f_\bt(\y|\z)d\y \pi(\z) d\z = 0.
+\end{multline}
+
+However maximizing \eqref{eqn:gee_marginal} w.r.t $\bt$ is extremely hard (this would be the EM algorithm, in fact). A way forward would be to use variational inference, or other approximations of $\bm\Psi(\bt, \z, \y)$. Here, we propose the AI trick to approximate \eqref{eqn:gee_marginal}:
+%
+\begin{equation}
+    \tilde{\bm\Psi}(\bt;\y) = \bm U(\bt, \e(\bt, \y); \y) - \E[\bm U(\bt, \e(\bt, \Y); \Y)]
+\end{equation}
+%
+This approximation is good (to be shown ??), but the key here is that, unlike approximations using variational inference or gaussian quadrature, our estimator retains its tractability because its expectation is still 0:
+
+\begin{equation}
+    \E[\tilde{\bm\Psi}(\bt;\Y)] = \bm 0.
+\end{equation}
+
+\subsection{Some other remarks}
+
+Notice that at the cost of notational complexity, the distribution of $\Y_i$, and indeed of $\Y_i|\Z_i$, can be made conditional on some covariates $\X_i$.
+The variance functions $\{V_j\}_{j=1}^p$ in \eqref{eqn:estimator}, similarly to GEEs, can capture dependence among the observations in longitudinal studies, such as when there are multiple measurements for each participant. Alternatively, random effects can be added as latent variables and similarly imputed by the encoder. Our estimator remains consistent by definition and covers all these cases.
+
+
+\subsection{Summary}
+Our estimator is defined as the root $\hat\bt\in\bm\Theta$ of the following so-called estimating equations:
+%
+\begin{equation}
+    \frac{1}{n}\sum_{i=1}^n \bm G(\Y_i, \bt) = \frac{1}{n}\sum_{i=1}^n \E[\bm G(\Y_i, \bt)],
+\end{equation}
+
+%
+where the expectation is taken under the model $F_{\bt}$. This estimator is a special case of a mimial distance estimator \gb{cite}, which is a large class of estimators which includue method of moments and M-estimators. 
+
+It belongs to the class of M-estimators, which relate an empirical mean of a quantity $\bm G(\Y_i, \bt)$ to its theoretical counterpart\gb{cite something}; it is not unlike the method of moments, except that we allow the quantity to also depend on the parameter. For our purpose, we define this quantity to be
+%
+\begin{equation}
+    \bm G(\Y_i, \bt) = \sum_{j=1}^p \frac{\bm D_j(\Z_i, \bt) Y_{ij}}{V_j(\Z_i, \bt)\phi_j}\Bigg\vert_{\Z_i=\e(\Y_i, \bt)},
+\end{equation}
+%
+where $\mu_{ij}(\Z_i, \bt) = \E[Y_{ij}|\Z_i]$, $\bm D_j(\Z_i, \bt) = \frac{\partial \mu_{ij}(\Z_i, \bt)}{\partial\bt} $, $V_j(\Z_i, \bt)\phi_j = \text{Var}(Y_{ij}|\Z_i)$, $\phi_j$ is a scale parameter and $\e(\Y_i, \bt)$ is the \textit{encoder}, an imputing function estimating the unknown $\Z_i$. By this imputation, the unknown $\Z_i$ are replaced solely by a function of $\Y_i$ and $\bt$, effectively profiling them out of the estimating equations. Note that the quantity $\bm D_j(\Z_i, \bt)$ is computed as if $\Z_i$ were observed. Finally, we allow the distribution of $\Y_i$ to depend on $i$ through external covariates.
+
+
+\subsection{Special Case of Canonical Parameters}
+When $g$ is the cannonical link function, the following relationship holds:
+the equation  \eqref{eqn:generalized-linear-models} simplifies, thanks to the relationship
+
+$$
+\frac{\partial \mu_i(\bt)}{\partial\bt} = \frac{\partial g^{-1}(\eta_i(\bt))}{\partial \eta_i(\bt)}\frac{\partial \eta_i(\bt)}{\partial\bt} = V_i(\bt)\frac{\partial \eta_i(\bt)}{\partial\bt},
+$$
+
+to :
+
+\begin{equation}
+    \sum_{i=1}^n \frac{\partial\eta_i(\bt)}{\partial\bt}\frac{(Y_i - \mu_i(\bt))}{\phi}\cdot
+    \label{eqn:generalized-linear-models-cannonical}
+\end{equation}
+
+
+{\noindent \em Remainder omitted in this sample. See http://www.jmlr.org/papers/ for full paper.}
+
+% Acknowledgements should go at the end, before appendices and references
+
+\acks{I did that for fun. Please help.}
+
+% Manual newpage inserted to improve layout of sample file - not
+% needed in general before appendices/bibliography.
+
+\newpage
+
+\appendix
+\section*{Appendix A.}
+\label{app:theorem}
+
+% Note: in this sample, the section number is hard-coded in. Following
+% proper LaTeX conventions, it should properly be coded as a reference:
+
+%In this appendix we prove the following theorem from
+%Section~\ref{sec:textree-generalization}:
+
+In this appendix we prove the following theorem from
+Section~6.2:
+
+\noindent
+{\bf Theorem} {\it Let $u,v,w$ be discrete variables such that $v, w$ do
+not co-occur with $u$ (i.e., $u\neq0\;\Rightarrow \;v=w=0$ in a given
+dataset $\dataset$). Let $N_{v0},N_{w0}$ be the number of data points for
+which $v=0, w=0$ respectively, and let $I_{uv},I_{uw}$ be the
+respective empirical mutual information values based on the sample
+$\dataset$. Then
+\[
+	N_{v0} \;>\; N_{w0}\;\;\Rightarrow\;\;I_{uv} \;\leq\;I_{uw}
+\]
+with equality only if $u$ is identically 0.} \hfill\BlackBox
+
+\noindent
+{\bf Proof}. We use the notation:
+\[
+P_v(i) \;=\;\frac{N_v^i}{N},\;\;\;i \neq 0;\;\;\;
+P_{v0}\;\equiv\;P_v(0)\; = \;1 - \sum_{i\neq 0}P_v(i).
+\]
+These values represent the (empirical) probabilities of $v$
+taking value $i\neq 0$ and 0 respectively.  Entropies will be denoted
+by $H$. We aim to show that $\fracpartial{I_{uv}}{P_{v0}} < 0$....\\
+
+{\noindent \em Remainder omitted in this sample. See http://www.jmlr.org/papers/ for full paper.}
+
+
+\vskip 0.2in
+\bibliography{references}
+
+\end{document}

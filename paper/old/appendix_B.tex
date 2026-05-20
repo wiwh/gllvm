@@ -1,0 +1,35 @@
+\section{Estimating the Asymptotic Variance}
+{\color{red}
+\textbf{The current presentation is OK for imputation; it is NOT OK for the expectation. We need something else.}
+
+\label{appendix:variance}
+
+To estimate the asymptotic variance of the estimator $\hat\bt_n$, we adopt a practical procedure inspired by the parametric bootstrap and justified by the linearization of the estimating equations.
+
+\subsection*{Fixed-decoder resampling approach}
+
+After computing $\hat\bt_n$ by solving the estimating equation (2), we fix the surrogate function at its estimated value: that is, we define
+\[
+e(\y) := e(\y, \hat\bt_n)
+\]
+and treat this as a fixed transformation (the decoder). We then define the estimating function with the decoder fixed:
+\[
+\psi(\y) := \psi_{\hat\bt_n}(\y, e(\y)).
+\]
+This function no longer depends on $\bt$, allowing us to view the estimation problem as solving
+\[
+\frac{1}{n} \sum_{i=1}^n \psi(\Y_i^*) = \mathbb{E}_{\Y \sim f_{\hat\bt_n}}[\psi(\Y)],
+\]
+over bootstrap samples $\{\Y_i^*\}_{i=1}^n$ drawn from the marginal model $f_{\hat\bt_n}(\y)$. Each replicate yields an estimate of $\bt$, now much easier to compute since the decoder is held fixed.
+
+\subsection*{Asymptotic justification}
+
+This procedure approximates the asymptotic distribution of $\hat\bt_n$ via a first-order Taylor expansion of the estimating equation. Fixing $e(\y)$ makes the estimating function $\psi(\y)$ stable across replicates, and its empirical fluctuation around its expectation determines the sampling variability of $\hat\bt_n$. The estimated covariance matrix from the replicates converges to the sandwich formula
+\[
+G^{-1} \Sigma G^{-\top},
+\]
+where $G$ and $\Sigma$ are defined in Appendix~\ref{appendix:theory}. Geometrically, this corresponds to computing variability along the tangent plane to the moment surface at $\bt_0$, under the fixed transformation $e(\y)$.
+
+This approach is both computationally efficient and compatible with autodiff frameworks, and avoids repeatedly optimizing the encoder network.
+
+}

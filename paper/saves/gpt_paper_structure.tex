@@ -1,0 +1,88 @@
+\section{paper structure}
+
+\section*{Proposed paper structure (and what is \emph{true})}
+
+\paragraph{(S1) General $q$ first — the framework.}
+Define for any encoder/posterior approximation $q_\bt(Z\mid Y)$:
+\[
+\psi_\bt(y)\;=\;m_\bt(y)-\E_{f_{Y;\bt}}[m_\bt(Y)],\qquad
+m_\bt(y)=\E_{q_\bt(Z\mid y)}\!\big[D(Z,\bt)^\top T(y)\big].
+\]
+\begin{lemma}[Derivative cancellation]
+Under standard regularity, with $s(\bt;Y)=\nabla_\bt\log f_{Y;\bt}(Y)$,
+\[
+A(\bt_0)=\E[\nabla_\bt\psi_\bt(Y)]_{\bt_0}
+= -\,\E\!\big[m_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big],
+\qquad
+B(\bt_0)=\Var\!\big(m_{\bt_0}(Y)\big).
+\]
+\end{lemma}
+In exponential families, write $m_{\bt_0}=s_{\bt_0}+b_{\bt_0}$ to get
+\[
+A(\bt_0)=-\,I(\bt_0)-M,\;\;M=\E[b_{\bt_0}s_{\bt_0}^\top],\quad
+A(\bt_0)=-\,I^{1/2}\!\big(I+\widetilde M\big)I^{1/2},\;\;\widetilde M=I^{-1/2}MI^{-1/2}.
+\]
+\[
+\boxed{\ \ \|\widetilde M\|_{\op}<1\ \Longrightarrow\ A(\bt_0)\ \text{invertible (local uniqueness).}\ }
+\]
+
+\paragraph{(S2) “Oracle” baseline at the \emph{true} posterior.}
+Let
+\[
+m^\star_{\bt_0}(Y)=\E\!\big[D(Z,\bt_0)^\top T(Y)\mid Y\big],
+\qquad
+m^q_{\bt_0}(Y)=\E_{q_{\bt_0}(Z\mid Y)}\!\big[D(Z,\bt_0)^\top T(Y)\big],
+\quad
+\delta(Y)=m^q_{\bt_0}(Y)-m^\star_{\bt_0}(Y).
+\]
+Then
+\[
+A_q=A^\star-\E[\delta\,s_0^\top],\qquad
+B_q=B^\star+\Var(\delta)+2\,\Cov(m^\star_{\bt_0},\delta),
+\]
+with $A^\star=-\E[m^\star_{\bt_0}s_0^\top]$, $B^\star=\Var(m^\star_{\bt_0})$, $s_0=s(\bt_0;Y)$.
+After Fisher normalization ($\widetilde A=I^{-1/2}AI^{-1/2}$, etc.),
+\[
+\|\widetilde A_q-\widetilde A^\star\|_{\op}\ \le\ C_1\,\|\tilde\delta\|_{L^2},\qquad
+\|\widetilde B_q-\widetilde B^\star\|_{\op}\ \le\ C_2\,\|\tilde\delta\|_{L^2}+C_3\,\|\tilde\delta\|_{L^2}^2,
+\]
+so the sandwich variance $\Sigma_q=A_q^{-1}B_qA_q^{-\top}$ depends \emph{continuously} on the encoder via $\delta$:
+\[
+\|\Sigma_q-\Sigma^\star\| \;\xrightarrow[\ \|\tilde\delta\|_{L^2}\to 0\ ]{}\;0.
+\]
+
+\paragraph{(S3) What is \emph{not} true (avoid over-claiming).}
+It is \emph{not} generally true that $\Sigma_q$ is minimized (in p.s.d.\ order) at the true posterior among \emph{all} $q$. The global lower bound is the CRB:
+\[
+\Sigma \succeq I(\bt_0)^{-1},\quad\text{with equality iff }\ \psi_{\bt_0}(Y)\ \text{is proportional to }s(\bt_0;Y),
+\]
+which typically \emph{fails} for $m^\star_{\bt_0}$ (so the oracle is still inefficient vs.\ the MLE).  
+What \emph{is} true and sufficient for the paper:
+\begin{itemize}
+\item The oracle $(A^\star,B^\star)$ is the canonical \emph{baseline} for your method.
+\item Deviations $q\neq f_{Z\mid Y;\bt_0}$ perturb $(A,B)$ and $\Sigma$ \emph{continuously} via $\delta$.
+\item Identifiability margin degrades at most linearly: $\|\widetilde M_q\|_{\op}\le \|\widetilde M^\star\|_{\op}+C\,\|\tilde\delta\|_{L^2}$, so $\|\widetilde M^\star\|_{\op}$ is the best-case baseline.
+\end{itemize}
+
+\paragraph{(S4) Quantify the difference (no encoder derivatives needed).}
+All comparisons reduce to $\delta(Y)$; no $\nabla_\bt q$ ever enters:
+\[
+\boxed{\
+\begin{aligned}
+\widetilde A_q&=\widetilde A^\star-\E[\tilde\delta\,\tilde s_0^\top],\\
+\widetilde B_q&=\widetilde B^\star+\Var(\tilde\delta)+2\,\Cov(\tilde m^\star,\tilde\delta),\\
+\Sigma_q&=I^{-1/2}\,\widetilde A_q^{-1}\,\widetilde B_q\,\widetilde A_q^{-\top}\,I^{-1/2}.
+\end{aligned}
+}
+\]
+This is the analytic \emph{gap formula}. It is easy to estimate empirically and to bound theoretically (via Cauchy–Schwarz) because it only involves \emph{forward} evaluations of $m^q$.
+
+\paragraph{(S5) Practical notes to include.}
+\begin{itemize}
+\item \textbf{Computational cost:} One encoder forward (for $m_\bt$) $+$ one model score eval (for $s$) per iteration $\Rightarrow$ $\lesssim 2\times$ VAE.
+\item \textbf{Targeted centering:} Apply centering only to selected coordinates; non-centered ones inherit MLE bread.
+\item \textbf{Identifiability check:} Report $\|\widehat{\widetilde M}\|_{\op}$ (or $\|\widehat{\widetilde\Sigma}_{bb}\|_{\op}$) as a dimensionless diagnostic.
+\end{itemize}
+
+\paragraph{One-paragraph “story” for the intro.}
+\emph{We propose a symmetric-centering $Z$-estimator for latent-variable models whose asymptotic theory never differentiates through the encoder. The bread collapses to $-\,\E[m_{\bt_0}s_0^\top]$, the meat to $\Var(m_{\bt_0})$, yielding a Fisher\(+\)perturbation form and a crisp identifiability test $\|\widetilde M\|_{\op}<1$. Taking the \emph{true} posterior provides an oracle baseline; any approximate posterior $q$ perturbs the sandwich only through the $L^2$ error $\delta(Y)=m^q_{\bt_0}(Y)-m^\star_{\bt_0}(Y)$. Thus “closer encoder $\Rightarrow$ better” is transparent and quantifiable, all without encoder Jacobians.}

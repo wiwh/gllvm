@@ -1,0 +1,233 @@
+\paragraph{Yes — use a posterior–control–variates (``double–centering'') trick.}
+Let
+\[
+m_T(\y,\bt)\;\vcentcolon=\;\E_{q_{\Z\mid \y;\,\bt}}\!\big[D(\Z,\bt)^\top T(\y)\big],
+\qquad
+m_\mu(\y,\bt)\;\vcentcolon=\;\E_{q_{\Z\mid \y;\,\bt}}\!\big[D(\Z,\bt)^\top \mu_\bt(\Z)\big].
+\]
+Your current centering solves
+\[
+\frac{1}{n}\sum_{i=1}^n m_T(\y_i,\bt)\;-\;\E_{f_{\Y;\,\bt}}\!\big[m_T(\Y,\bt)\big]\;=\;\bm 0,
+\]
+which is Fisher–consistent for any $q$ but does \emph{not} match the sample MLE equations term–by–term.
+
+Introduce a control–variates correction by adding and subtracting the $q$–posterior analogue of the model moment, together with its model expectation:
+\begin{equation}
+\Psi_n^{\mathrm{dc}}(\bt)
+\;\vcentcolon=\;
+\underbrace{\frac{1}{n}\sum_{i=1}^n\big[m_T(\y_i,\bt)-m_\mu(\y_i,\bt)\big]}_{\text{sample, $q$–posterior}}
+\;-\;
+\underbrace{\Big(\E_{f_{\Y;\,\bt}}\![m_T(\Y,\bt)]-\E_{f_{\Y;\,\bt}}\![m_\mu(\Y,\bt)]\Big)}_{\text{model expectation (centering)}}
+\;=\;\bm 0.
+\label{eq:double-centering}
+\end{equation}
+
+\paragraph{Properties.}
+\begin{enumerate}
+\item \textbf{Fisher consistency for any $q$.}
+At the truth $\bto$, take expectation w.r.t.\ $f_{\Y;\,\bto}$:
+\[
+\E\big[\Psi_n^{\mathrm{dc}}(\bto)\big]
+=\E[m_T(\Y,\bto)-m_\mu(\Y,\bto)]
+-\Big(\E[m_T(\Y,\bto)]-\E[m_\mu(\Y,\bto)]\Big)
+=\bm 0.
+\]
+Thus $\bto$ is a population root regardless of the quality of $q$.
+
+\item \textbf{Exact recovery of the MLE equations when $q=f_{\Z\mid \Y;\,\bt}$.}
+If $q_{\Z\mid \y;\,\bt}\equiv f_{\Z\mid \Y;\,\bt}$, then for each $\y$,
+\[
+m_T(\y,\bt)=\E_{f_{\Z\mid \Y;\,\bt}}[D(\Z,\bt)^\top T(\y)],\quad
+m_\mu(\y,\bt)=\E_{f_{\Z\mid \Y;\,\bt}}[D(\Z,\bt)^\top \mu_\bt(\Z)].
+\]
+Hence the \emph{sample} part of \eqref{eq:double-centering} is exactly the MLE estimating function
+\[
+\frac{1}{n}\sum_{i=1}^n
+\Big\{
+\E_{f_{\Z\mid \Y;\,\bt}}[D(\Z,\bt)^\top T(\y_i)]
+-
+\E_{f_{\Z\mid \Y;\,\bt}}[D(\Z,\bt)^\top \mu_\bt(\Z)]
+\Big\}.
+\]
+Meanwhile, by the law of iterated expectations,
+\[
+\E_{f_{\Y;\,\bt}}[m_T(\Y,\bt)]=\E_{f_{\Z}}[D(\Z,\bt)^\top \mu_\bt(\Z)]
+=\E_{f_{\Y;\,\bt}}[m_\mu(\Y,\bt)],
+\]
+so the \emph{centering} bracket in \eqref{eq:double-centering} vanishes identically. Therefore
+$\Psi_n^{\mathrm{dc}}(\bt)=0$ reduces \emph{exactly} to the MLE equations \eqref{eqn:MLE-estimating-equations-expfam} at the sample level.
+\end{enumerate}
+
+\paragraph{Asymptotics (same sandwich form, cleaner meat).}
+Let $s(\bt;\Y)=\nabla_\bt\log f_{\Y;\,\bt}(\Y)$.
+The estimating function is the centered random vector
+\[
+\psi(\Y,\bt)\;=\;\big(m_T(\Y,\bt)-m_\mu(\Y,\bt)\big)
+-\E_{f_{\Y;\,\bt}}\!\big[m_T(\Y,\bt)-m_\mu(\Y,\bt)\big].
+\]
+Thus at $\bto$,
+\[
+A(\bto)\;=\;-\E\!\big[(m_T-m_\mu)\,s(\bto;\Y)^\top\big],
+\qquad
+B(\bto)\;=\;\Var\!\big(m_T(\Y,\bto)-m_\mu(\Y,\bto)\big),
+\]
+and
+\[
+\sqrt{n}\,(\widehat\bt_n-\bto)\ \Rightarrow\ \mathcal N\!\left(\bm 0,\;A(\bto)^{-1}B(\bto)A(\bto)^{-T}\right).
+\]
+Because $m_\mu$ is typically highly correlated with $m_T$, the difference $m_T-m_\mu$ plays the role of a \emph{control variate}, often shrinking $B(\bto)$ and improving small–sample behavior without changing the limit.
+ 
+\paragraph{Summary.}
+Equation \eqref{eq:double-centering} is algebraically equivalent to your centered estimator (we merely added and subtracted $m_\mu$ and its model expectation), hence retains your robustness/Fisher–consistency guarantees for arbitrary $q$. Yet when $q$ equals the true posterior, the model–expectation bracket cancels and the \emph{sample} term becomes the original MLE estimating equations — giving you the best of both worlds.
+
+
+
+\subsection{problem with identifiability}
+
+\paragraph{Short answer.} Yes, it’s very plausible — not (only) a coding issue. 
+The “double–centering” moment
+\[
+\psi_{\mathrm{dc}}(\y,\bt)\;=\;\underbrace{\big(m_T(\y,\bt)-m_\mu(\y,\bt)\big)}_{\text{sample $q$–posterior MLE diff.}}
+\;-\;\underbrace{\E_{f_{\Y;\,\bt}}\!\big[m_T(\Y,\bt)-m_\mu(\Y,\bt)\big]}_{\text{model centering}}
+\]
+can \emph{erase} much of the identifying signal and make the Jacobian nearly singular, even though it remains Fisher–consistent. Below is why this happens and how to fix it.
+
+\paragraph{Why non–identifiability can appear.}
+Let $s(\bt;\Y)=\nabla_\bt\log f_{\Y;\,\bt}(\Y)$ and write covariances at the truth $\bto$:
+\[
+\Sigma_{Ts}\!=\!\Cov\!\big(m_T(\Y,\bto),\,s(\bto;\Y)\big),\quad
+\Sigma_{\mu s}\!=\!\Cov\!\big(m_\mu(\Y,\bto),\,s(\bto;\Y)\big).
+\]
+The “bread” is
+\[
+A_{\mathrm{dc}}(\bto)\;=\;-\E\!\left[(m_T-m_\mu)\,s^\top\right]
+\;=\;-(\Sigma_{Ts}-\Sigma_{\mu s}).
+\]
+\emph{High alignment} between $m_T$ and $m_\mu$ (typical when both are computed from the same $D(\Z,\bt)$ with a similar $q$) makes $\Sigma_{Ts}\approx\Sigma_{\mu s}$ so that $\|A_{\mathrm{dc}}(\bto)\|$ shrinks and $\kappa(A_{\mathrm{dc}})$ blows up. Geometrically, you subtracted a control variate that is (nearly) colinear with the very direction that identifies $\bt$, collapsing signal and creating flat directions.
+
+\emph{Three compounding practical effects:}
+\begin{enumerate}
+\item \textbf{Near–cancellation noise.} Both brackets are \emph{large} and close; subtracting them amplifies MC error and autodiff noise (catastrophic cancellation), flattening the estimating surface.
+\item \textbf{Degenerate/over–diffuse $q$.} With MAP–like or overly diffuse $q$, $m_T-m_\mu$ is small with weak $\bt$–sensitivity; $A_{\mathrm{dc}}$ becomes tiny.
+\item \textbf{Invariances.} Label–switching / reparametrization symmetries in latent models affect $m_T$ and $m_\mu$ similarly, so their difference inherits (and can exacerbate) non–identifiable directions.
+\end{enumerate}
+
+\paragraph{Diagnostics (quick checks).}
+Estimate, at a provisional $\bt$,
+\[
+\widehat\rho\;\vcentcolon=\;\mathrm{corr}\!\big(m_T(\Y,\bt),\,m_\mu(\Y,\bt)\big),\qquad
+\widehat A\;\vcentcolon=\;-\widehat{\Cov}\big(m_T-m_\mu,\,s\big).
+\]
+If $\widehat\rho\to 1$ and $\kappa(\widehat A)$ is large (or $\sigma_{\min}(\widehat A)\approx 0$), your moment is ill–posed. Compare with your original single–centering moment ($m_T$ only): its $\widehat A$ is typically much better conditioned.
+
+\paragraph{Three robust fixes (keep your guarantees, regain signal).}
+\begin{enumerate}
+\item \textbf{Shrinked double–centering.} Replace $m_T-m_\mu$ by $m_T-\gamma m_\mu$ and center the same linear combo:
+\[
+\psi_\gamma(\y,\bt)\;=\;\big(m_T-\gamma m_\mu\big)
+-\E\!\big[m_T-\gamma m_\mu\big],
+\quad
+A_\gamma(\bto)=-(\Sigma_{Ts}-\gamma\Sigma_{\mu s}).
+\]
+Choose $\gamma\in[0,1]$ \emph{to maximize stability}, e.g. by maximizing $\sigma_{\min}(\widehat A_\gamma)$ or $\log\det(\widehat A_\gamma\widehat A_\gamma^\top)$ on a held–out batch. 
+Special cases: $\gamma=0$ (your original, well–behaved single–centering); $\gamma=1$ (double–centering; risky).
+
+\item \textbf{Orthogonalized control variate.} Regress $m_T$ on $m_\mu$ and subtract only the component of $m_T$ \emph{explained} by $m_\mu$:
+\[
+\Gamma^\ast \;\vcentcolon=\;\arg\min_\Gamma \E\|m_T-\Gamma m_\mu\|^2,
+\quad r(\Y,\bt)\;\vcentcolon=\;m_T-\Gamma^\ast m_\mu.
+\]
+Use $\psi_{\mathrm{ortho}}(\y,\bt)=r(\y,\bt)-\E[r(\Y,\bt)]$. Then
+$A_{\mathrm{ortho}}(\bto)=-\Cov(r,s)$,
+and $r$ is uncorrelated with $m_\mu$ by construction, preventing the most harmful cancellation while still reducing variance.
+
+\item \textbf{Tempered centering (ridge).} Add back a small fraction of the single–centered term to keep $A$ away from $0$:
+\[
+\psi_{\lambda}(\y,\bt)\;=\;\underbrace{\big(m_T-m_\mu\big)-\E\!\big[m_T-m_\mu\big]}_{\text{double–centered}}
+\;+\;\lambda\,\underbrace{\big(m_T-\E[m_T]\big)}_{\text{single–centered}},\quad \lambda>0.
+\]
+Now $A_\lambda(\bto)=-(\Sigma_{Ts}-\Sigma_{\mu s})-\lambda\,\Sigma_{Ts}$.
+Pick a small $\lambda$ (e.g.\ via line search) to regularize $A$ without much variance penalty.
+\end{enumerate}
+
+\paragraph{Implementation tips (minimize false pathologies).}
+\begin{itemize}
+\item \emph{Common random numbers:} reuse the same model–MC seeds for the centering term across $\bt$ to avoid extra stochastic curvature.
+\item \emph{Cross–fitting:} fit $q_\phi$ on a split sample and evaluate the moments on the other split; reduces feedback loops that flatten $A$.
+\item \emph{Stop–gradient where intended:} when $q_\phi$ is amortized, be explicit about whether $\nabla_\bt$ should flow into $\phi$; unintended paths can make $A$ numerically close to $0$.
+\item \emph{Monitor $\sigma_{\min}(\widehat A)$ \& $\|\widehat B\|$:} abort Newton when $\sigma_{\min}$ dips below a threshold; switch to a trust–region or SGD on a squared norm of the estimating equations.
+\end{itemize}
+
+\paragraph{Takeaway.} 
+Double–centering is theoretically sound but can \emph{over–correct}, nearly canceling the very score–aligned component that identifies $\bt$. Start from your single–centering (empirically stable), and if you want variance reduction via “MLE–style” correction, use a \emph{tempered/orthogonalized} control–variate (items 1–3) rather than the raw difference. This preserves your Fisher consistency while keeping the Jacobian well–conditioned.
+
+
+
+\subsection{Finally}
+
+\paragraph{Yes — more terms $\Rightarrow$ more cancellation paths.}
+Write the double–centered estimating function as the difference of two \emph{centered} brackets:
+\[
+\Psi_{\mathrm{dc}}(\bt)
+\;=\;\underbrace{\Big(\tfrac{1}{n}\sum_{i=1}^n m_T(\y_i,\bt)-\E[m_T(\Y,\bt)]\Big)}_{\triangleq\,\Delta_T(\bt)}
+\;-\;
+\underbrace{\Big(\tfrac{1}{n}\sum_{i=1}^n m_\mu(\y_i,\bt)-\E[m_\mu(\Y,\bt)]\Big)}_{\triangleq\,\Delta_\mu(\bt)}.
+\]
+Each bracket already equals a \emph{difference of two terms}, so $\Psi_{\mathrm{dc}}$ is a \emph{four–term} cancellation. In contrast, your single–centering uses only $\Delta_T(\bt)$, i.e., a \emph{two–term} cancellation.
+
+\paragraph{Heuristic (degrees of cancellation).}
+In the scalar case, $\Psi_{\mathrm{dc}}(\bt)=0$ admits solutions whenever $\Delta_T(\bt)=\Delta_\mu(\bt)$.
+Even if neither bracket is zero, the two can match accidentally. Thus the solution set
+\[
+\mathcal S_{\mathrm{dc}}\;=\;\{\bt:\ \Delta_T(\bt)=\Delta_\mu(\bt)\}
+\]
+can be much larger than 
+$\mathcal S_{\mathrm{sc}}=\{\bt:\ \Delta_T(\bt)=0\}$,
+creating extra (spurious) roots or near–roots and hence poor conditioning for Newton steps.
+
+\paragraph{Jacobian view (why $A$ collapses).}
+Let $s(\bt;\Y)=\nabla_\bt\log f_{\Y;\,\bt}(\Y)$ and denote covariances at $\bto$:
+\[
+A_{\mathrm{dc}}(\bto)\;=\;-\Cov\big(m_T(\Y,\bto)-m_\mu(\Y,\bto),\,s(\bto;\Y)\big)
+=-(\Sigma_{Ts}-\Sigma_{\mu s}).
+\]
+If $m_T$ and $m_\mu$ are highly aligned in the score–direction (typical, since both use the same $D(\Z,\bt)$ under the same $q$), then $\Sigma_{Ts}\approx\Sigma_{\mu s}$ and $A_{\mathrm{dc}}(\bto)$ becomes small or singular. This is precisely your “four–term cancellation” in differential form.
+
+\paragraph{Toy scalar illustration.}
+Suppose (after scaling) 
+$m_T(\Y,\bt)=a(\bt)\,S(\Y)+\epsilon_T$ and $m_\mu(\Y,\bt)=b(\bt)\,S(\Y)+\epsilon_\mu$, 
+with $S(\Y)$ correlated with $s(\bto;\Y)$ and centered noises $\epsilon_T,\epsilon_\mu$ uncorrelated with $s$.
+Then
+\[
+A_{\mathrm{dc}}(\bto)=-(a(\bto)-b(\bto))\,\Cov(S,s).
+\]
+When $a(\bto)\approx b(\bto)$, the bread collapses even though each of $A_T= -a(\bto)\Cov(S,s)$ and $A_\mu=-b(\bto)\Cov(S,s)$ is nonzero. The “extra two terms” make it easy for $a$ and $b$ to nearly cancel.
+
+\paragraph{A minimal fix that keeps your guarantees.}
+Use a \emph{tempered} control–variates difference:
+\[
+\Psi_\gamma(\bt)\;\vcentcolon=\;\big(m_T-\gamma m_\mu\big)-\E\big[m_T-\gamma m_\mu\big],
+\qquad \gamma\in[0,1].
+\]
+At $\bto$, $A_\gamma(\bto)=-(\Sigma_{Ts}-\gamma\Sigma_{\mu s})$.
+Pick $\gamma$ to \emph{maximize} a stability proxy, e.g.
+\[
+\gamma^\star\in\arg\max_{\gamma\in[0,1]} \ \sigma_{\min}\!\big(\widehat A_\gamma^\top \widehat A_\gamma\big)
+\quad\text{or}\quad
+\log\det\!\big(\widehat A_\gamma \widehat A_\gamma^\top\big),
+\]
+computed on a pilot batch. 
+Special cases: $\gamma=0$ (your single–centering; robust), $\gamma=1$ (full double–centering; risky).
+
+\paragraph{Even safer: orthogonalized subtraction.}
+Project out only the component of $m_T$ explained by $m_\mu$:
+\[
+\Gamma^\ast \;\vcentcolon=\;\arg\min_\Gamma \E\|m_T-\Gamma m_\mu\|^2,\qquad
+r(\Y,\bt)\;\vcentcolon=\;m_T-\Gamma^\ast m_\mu.
+\]
+Use $\Psi_{\mathrm{ortho}}(\bt)=r-\E[r]$.
+Then $A_{\mathrm{ortho}}(\bto)=-\Cov(r,s)$ and $r\perp m_\mu$ by construction, preventing the most dangerous cancellation while preserving Fisher consistency and still reducing variance.
+
+\paragraph{Practical takeaway.}
+Your intuition is exactly right: turning a two–term balance into a four–term one multiplies the ways the equation can “accidentally” hold, inflating spurious roots and flattening the Jacobian. 
+Prefer single–centering; if you seek variance reduction toward the MLE form, use a \emph{tempered} ($\gamma<1$) or \emph{orthogonalized} correction rather than raw double–centering.

@@ -1,0 +1,1320 @@
+    \documentclass[twoside,11pt]{article}
+% HEIN QUOI
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+\usepackage{jmlr2e}
+\usepackage{mathtools}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{preamble}
+\usepackage{booktabs}
+\usepackage[most]{tcolorbox}  % Required for the colored box
+
+
+
+% todo
+ \setlength {\marginparwidth }{2cm} % TODO: REMOVE THAT later
+\usepackage{todonotes}
+\definecolor{lightred}{RGB}{120,60,60}
+\definecolor{darkred}{RGB}{255,0,0}
+\newcommand{\proofread}[1]{{\color{lightred}#1}}
+\newcommand{\rewrite}[2]{{\color{darkred}#1}}
+
+\definecolor{gbcolor}{RGB}{220, 160, 180}
+\newcommand{\gb}[2][]{\todo[color=gbcolor, caption={GB}, #1]{#2}}
+\definecolor{jbcolor}{RGB}{180, 220, 200}
+\newcommand{\jb}[2][]{\todo[color=jbcolor, caption={JB}, #1]{#2}}
+
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+% Heading arguments are {volume}{year}{pages}{submitted}{published}{author-full-names}
+
+\jmlrheading{1}{2000}{1-48}{4/00}{10/00}{Blanc}
+
+% Short headings should be running head and authors last names
+
+\ShortHeadings{The AI Trick for GDLVMs}{}
+\firstpageno{1}
+
+\begin{document}
+
+\title{Surrogate Z Estimator for Latent Variable Models}
+
+\author{\name Guillaume Blanc \email guillaume.e.blanc@gmail.com
+  \AND
+  \name Julien Bodelet \email julien.bodelet@gmail.com
+  \AND
+  \name Benjamin Poilane \email benjamin@protonmail.com
+  \AND
+  \name Narmina Christelle Cat Than Oliver
+}
+
+\editor{Mr I say yes} % lol
+
+\maketitle
+
+\begin{abstract}
+We propose Surrogate Z-Estimation, a general framework for consistent estimation in latent variable models. In the setting of exponential family models, we derive a class of estimators that remain Fisher consistent under misspecification of the posterior distribution, and recover full efficiency when the approximation is exact. This framework encompasses and corrects a broad family of approximate inference methods — including maximum a posteriori estimation, variational autoencoders, and Laplace approximations — which typically lack consistency guarantees. The approach retains computational scalability and is easily implemented using modern automatic differentiation tools such as PyTorch.
+\end{abstract}
+
+
+
+\newpage
+
+\listoftodos
+
+\newpage
+
+
+\section{Introduction}
+ Latent variable models are commonly used to capture complex dependencies in multivariate data. Generating a data point $\Y\in \mathcal Y \subseteq \mathbb R^p$ from a latent variable model  involves two steps: (1) a latent (unobserved) variable $\Z\in \mathcal Z \subseteq\mathbb R^q$ is generated from a known prior distribution $\pi(\z)$; (2) given $\Z$, the random variable $\Y|\Z$ is generated from some conditional distribution $f_\bt(\y|\z)$, known up to the parameters $\bt\in\bm\Theta\subseteq \mathbb R^r$. Thus, the latent variable model is a \textit{generative model} $F_\bt$ for the pair $(\Y, \Z)$:
+%
+\begin{align}
+    \begin{matrix}
+        \hfill\Z &\sim& \pi(\z)\hfill\\
+        \hfill\Y|\Z &\sim& f_\bt(\y|\z)\hfill,
+    \end{matrix}
+    \label{eqn:generative-model-general}
+\end{align}
+%
+where $\Z$ is unobserved.
+% 
+The marginal density $f_\bt(\y)$ of $\Y$, governing the observed quantities, is then obtained by integrating out the latent variable, that is
+%
+\begin{equation}
+    f_\bt(\y) = \int_{\mathcal Z} f_\bt(\y|\z)\pi(\z)d\z.
+\end{equation}
+%
+Latent variable models are elegant tools for multivariate data analysis, are easy to set up, and are surprisingly general. Identifiability usually requires that the dimension of the latent variable space, $q$, be smaller than that of the feature space, $p$. Far from being a drawback, this constraint enables dimensionality reduction, where a small number of latent variables capture the most salient features of the data. As such, they have been used extensively in deep learning, etc... In the social and biological sciences, they are a key tool to estimate a theorized latent construct ($\Z$) from a set of observable features ($\Y|\Z$) that it is assumed to affect. In longitudinal settings, where many observations of the same unit are gathered over time, a latent variable known as random effect can be used to model the correlation between observations on the same unit.
+
+
+
+
+% we don't need to talk (much) about the marginal likelihood, since the method only relies on the extended likelihood.
+% I would just talk about $f_\theta(y)$, which is intractable due to the integral.
+Given a sample of $n$ independent data pairs $\{(\y_i, \z_i)\}_{i=1}^n$ drawn from the model $F_{\bt_0}$, where the latent variables $\z_i$ are unobserved, an estimate of the parameter $\bt_0$ can, in principle, be obtained by maximizing the sample \textit{marginal log-likelihood}:
+\begin{equation}
+\sum_{i=1}^n \ell(\bt; \y_i) = \sum_{i=1}^n \log\left( \int_{\mathcal Z} f_\bt(\y_i| \z)\pi(\z)\,d\z \right),
+\label{eqn:marginal-likelihood}
+\end{equation}
+where $\ell(\bt; \y_i)$ denotes the marginal log-likelihood contribution of observation $i$. Under some regularity conditions, the maximizer of \eqref{eqn:marginal-likelihood} is the \textit{maximum likelihood estimator}, and is the unique solution to the following set of estimating equations, obtained from the gradient of the marginal log-likelihood:
+%
+\begin{equation}
+\frac{1}{n}\sum_{i=1}^n \mathbb{E}_{\pi_\bt(\z_i \mid \y_i)} \left[ \nabla_\theta \log f_\bt(\y_i, \z_i) \right] = 0,
+\label{eqn:MLE-estimating-equations}
+\end{equation}
+%
+where the expectation, for each $i$, is with respect to the posterior density $\pi_\bt(\z_i|\y_i)$. It can in principle be computed by the EM algorithm, which is an iterative scheme designed to solve Equation \eqref{eqn:MLE-estimating-equations}. A central challenge in estimating latent variable models is that in general, this expectation does not admit an analytical expression; worse still, it is computationally difficult to sample from $\pi_\bt(\z|\y)$, making it a tremendous challenge to estimate. Thus except in a few special cases where the integral admits a closed-form expression, even algorithms like Expectation-Maximization (EM), despite their favorable properties, may become computationally prohibitive. Alternative approaches—such as numerical quadrature, variational bounds (e.g., in variational autoencoders), or Monte Carlo integration—are often used in practice. However, these approximations can introduce substantial bias and typically do not scale well to high-dimensional latent spaces.
+
+To overcome these limitations, we propose an alternative approach that directly targets parameter estimation without requiring marginal likelihood computation. Our method defines an estimator, the Surrogate Moment Estimator (SME) through a system of moment equations, constructed from model-based quantities and a surrogate for the latent variables. This formulation generalizes classical estimating equations and yields consistent, scalable, and interpretable estimates even in complex latent variable models. We now describe the framework in detail.
+
+
+\section{The Framework}
+% Let $\{(\z_1, \y_1), \dots, (\z_n, \y_n)\}$ denote $n$ independent realizations of the random pair $(\Z, \Y) \sim F_{\bt_0}$, where $\Y \in \mathcal{Y} \subseteq \mathbb{R}^p$ is observed and $\Z \in \mathcal{Z} \subseteq \mathbb{R}^q$ is latent. 
+
+Our approach starts with the estimating equations \eqref{eqn:MLE-estimating-equations} and replaces the posterior distribution by an approximation $\tilde\pi_\bt(\z|\y)$, easier to work with. This can come from variational inference or Laplace approximation, or it can be a degenerate density at a single point, for instance at the mode of the posterior. Doing so creates a fundamental problem: the estimator is no longer Fisher consistent, in the sense that
+%
+\begin{equation}
+    \mathbb{E}_{\Y \sim f_\bt} \left[ \mathbb{E}_{\tilde\pi_\bt(\z \mid \Y)} \left[ \nabla_\bt \log f_\bt(\Y, \z) \right] \right] \neq 0.
+\end{equation}
+%
+That is, the expectation of the approximate estimating equation does not vanish under the true model, leading to a bias in the estimator. Fisher consistency being such a fundamentally desirable property for an estimator to have, one could be tempted to define a new estimator as the solution to
+
+\begin{equation}
+\label{eqn:estimator-with-score-of-joint}
+    \frac{1}{n}\sum_{i=1}^n \mathbb{E}_{\tilde\pi_\bt(\z \mid \y_i)} \left[ \nabla_\bt \log f_\bt(\y_i, \Z) \right] = 
+    \mathbb{E}_{\Y \sim f_\bt} \left[ \mathbb{E}_{\tilde\pi_\bt(\z \mid \Y)} \left[ \nabla_\bt \log f_\bt(\Y, \Z) \right] \right],
+\end{equation}
+%
+which indeed defines a Fisher consistent estimator \textit{by construction}, if it exist. Are we out of the woods yet? Not quite. As fate would have it, it turns out these equations often do not identify the parameter $\bt_0$.
+
+The culprit of this embarassment? the score of the joint log-likelihood $\nabla_\bt \log f_\bt(\y_i, \z)$. Hang the bastard! and find a more worthy replacement, while keeping the structure of \eqref{eqn:estimator-with-score-of-joint}, which guarantees Fisher consistency. This replacement comes in the form of an \textit{estimating function} $\psi_\bt : \mathcal{Y} \times \mathcal{Z} \to \mathbb{R}^r$ that encodes quantities of interest—such as sufficient statistics, or other features relevant to parameter estimation, but which does not fall short of our expectation (ha!) as the score function did. In Section~\ref{sct:exponential-family}, we consider the exponential family as a general class for the conditional distribution $f_\bt(\y \mid \z)$, which gives rise to a natural and interpretable choice of $\psi_\bt$.
+
+We are now ready to define the \emph{Surrogate Moment Estimation (SME)} estimator.
+%
+
+\begin{tcolorbox}[colback=blue!3!white,colframe=blue!70!black,title=SME General Definition]
+\begin{definition}[SME Estimator]
+Let \( \tilde\pi_\bt(\z \mid \y) \) be an approximation to the true posterior \( \pi_\bt(\z \mid \y) \), and let \( \psi_\bt : \mathcal{Y} \times \mathcal{Z} \to \mathbb{R}^r \) be a parameter-dependent \emph{estimating function}. The \textbf{SME (Surrogate Moment Equation) estimator} \( \hat\bt_n \) is defined as the solution \( \bt \in \Theta \subset \mathbb{R}^p \) to the equation:
+\begin{equation}
+\label{eqn:general-sme}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\Z_i \sim \tilde\pi_\bt(\z \mid \y_i)} 
+\left[
+\psi_\bt(\y_i, \Z_i)
+\right]
+=
+\mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\Z \sim \tilde\pi_\bt(\z \mid \Y)} 
+\left[
+\psi_\bt(\Y, \Z)
+\right]
+\right].
+\end{equation}
+The right-hand side is a model-implied moment that depends, and the left-hand side is the empirical average counterpart.
+\end{definition}
+\end{tcolorbox}
+As we will see, consistent and efficient estimators can be obtained even when the surrogate distribution \( \tilde\pi_\bt(\z \mid \y) \) departs significantly from the true posterior. In particular, when \( \tilde\pi_\bt(\z \mid \y) \) is a Dirac measure at the mode, \eqref{eqn:sme-expfam-definition} reduces to a point-imputation method using the maximum a posteriori (MAP) estimate, discussed below. Remarkably, in some models, this yields the maximum likelihood estimator itself.
+
+
+\begin{tcolorbox}[colback=yellow!5!white,colframe=yellow!60!black,title=First Objective: Write the General Case Conditions]
+The idea here is to remain very general, and simply state what the theory says (from Z-estimators). We don't need to prove much, just wrap the result in a framework.
+
+We assume that the MLE exists is identified by its score estimating equations.
+
+\begin{enumerate}
+    \item \textbf{State General Conditions:} Clearly state the known conditions from Z-estimation theory under which solutions to equations of the form
+    \[
+    \frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z_i \sim \tilde\pi_\bt(\z \mid \y_i)}[\psi(\Y_i, \Z_i, \bt)] 
+    = 
+    \mathbb{E}_{\Y \sim f_\bt} \mathbb{E}_{\Z \sim \tilde\pi_\bt(\z \mid \Y)}[\psi(\Y, \Z, \bt)]
+    \]
+    are consistent estimators of \( \bt_0 \), including:
+    \begin{itemize}
+        \item Continuity and integrability of \( \psi(\y, \z, \bt) \),
+        \item Uniform law of large numbers for the empirical moment,
+        \item Identifiability: the population equation has a unique root at \( \bt_0 \).
+    \end{itemize}
+\end{enumerate}
+\end{tcolorbox}
+
+\subsubsection{Consistency}
+\begin{enumerate}
+    \item This is mainly showing identifiability given MLE identifiability through its score equations
+\end{enumerate}
+
+1. show that if MLE indeed identifies, then the expectation of the score equation also identifies (this shoul dbe from theory no?
+2. then, we can give some conditions on psi, together with the approximated posterior, that says we remain identifiable.
+
+We assume (score equation of the MLE identify itself).
+
+{\color{red}
+\subsubsection{Consistency of the SME Estimator}
+
+We now state sufficient conditions ensuring the consistency of the SME estimator $\hat\bt_n$, as a Z-estimator. Denote the population estimating equation:
+
+\begin{equation}
+    \Psi(\bt) \equiv 
+    \mathbb{E}_{\Y \sim f_\bt}
+    \left[
+    \mathbb{E}_{\Z \sim \tilde\pi_\bt(\z \mid \Y)}
+    \left[
+    \psi_\bt(\Y, \Z)
+    \right]
+    \right],
+\end{equation}
+%
+and its empirical version
+%
+\begin{equation}
+    \Psi_n(\bt) \equiv 
+    \frac{1}{n} \sum_{i=1}^n 
+    \mathbb{E}_{\Z_i \sim \tilde\pi_\bt(\z \mid \y_i)}
+    \left[
+    \psi_\bt(\y_i, \Z_i)
+    \right].
+\end{equation}
+%
+Then $\hat\bt_n$ solves $\Psi_n(\hat\bt_n) = \Psi(\hat\bt_n)$.
+
+\begin{theorem}[Consistency of the SME Estimator]
+Assume:
+\begin{enumerate}
+    \item \textbf{(Identifiability)} The true parameter $\bt_0$ is the unique solution of the population equation
+    \[
+    \Psi(\bt) = \Psi(\bt_0).
+    \]
+    \item \textbf{(Continuity)} For each $(\y,\z)$, the estimating function $\psi_\bt(\y,\z)$ is continuous in $\bt$, and dominated by an integrable function under $f_\bt(\y)\tilde\pi_\bt(\z|\y)$.
+    \item \textbf{(Uniform Law of Large Numbers)} The class of functions
+    \[
+    \left\{
+    (\y,\z) \mapsto \psi_\bt(\y,\z) 
+    : \bt \in \Theta
+    \right\}
+    \]
+    satisfies a uniform law of large numbers, i.e.,
+    \[
+    \sup_{\bt \in \Theta}
+    \left\|
+    \Psi_n(\bt) - \mathbb{E}_{\Y \sim f_\bt}
+    \left[
+    \mathbb{E}_{\Z \sim \tilde\pi_\bt(\z \mid \Y)}
+    \left[
+    \psi_\bt(\Y, \Z)
+    \right]
+    \right]
+    \right\| \xrightarrow{p} 0.
+    \]
+\end{enumerate}
+Then any sequence of solutions $\hat\bt_n$ to the SME equations satisfies
+\[
+\hat\bt_n \xrightarrow{p} \bt_0.
+\]
+\end{theorem}
+
+\paragraph{Discussion.}
+The intuition is the following. First, if the original MLE is identified by its score equations, and if the estimating function $\psi_\bt$ preserves sufficient information about $\bt$, then condition (1) guarantees the SME has a unique target. Condition (2) guarantees continuity for convergence arguments, while condition (3) ensures that the sample averages behave regularly, allowing standard uniform convergence results to apply. Altogether, these are standard Z-estimator arguments adapted to the approximate surrogate posterior setting.
+
+BUT WE ASSUMED 1. We want to show it from our supposition on the score
+
+\paragraph{Identifiability of the SME Equations.}
+We now discuss identifiability of the SME estimator in relation to the identifiability of the MLE. Let us assume:
+%
+\begin{equation}
+\mathbb{E}_{\Y \sim f_{\bt_0}} \left[
+\mathbb{E}_{\pi_{\bt_0}(\z \mid \Y)}
+\left[
+\nabla_\bt \log f_{\bt}(\Y, \Z) \big|_{\bt=\bt_0}
+\right]
+\right]
+= 0
+\quad \text{has a unique solution at } \bt_0.
+\end{equation}
+%
+Define the SME population equation:
+%
+\begin{equation}
+\label{eqn:population-sme-identifiability}
+\Phi(\bt)
+\equiv
+\mathbb{E}_{\Y \sim f_{\bt}} \left[
+\mathbb{E}_{\tilde\pi_\bt(\z \mid \Y)}
+\left[
+\psi_\bt(\Y, \Z)
+\right]
+\right].
+\end{equation}
+%
+In general, identifiability of $\bt_0$ through $\Phi(\bt)$ requires that
+%
+\[
+\Phi(\bt) = \Phi(\bt_0)
+\implies
+\bt = \bt_0.
+\]
+%
+This holds under the following sufficient conditions:
+\begin{enumerate}
+    \item \textbf{(Informative $\psi$)} The estimating function $\psi_\bt(y,z)$ is such that its expectation under $f_\bt(y)\tilde\pi_\bt(z|y)$ preserves sufficient information to distinguish $\bt_0$ from other parameters. For instance, there exists a known one-to-one transformation $g$ such that
+    \[
+    \mathbb{E}_{\tilde\pi_\bt(\z \mid y)}\left[\psi_\bt(y,z)\right]
+    = g\left( \nabla_\bt \log f_\bt(y) \right),
+    \]
+    in which case identifiability is inherited from the MLE.
+    \item \textbf{(Non-degenerate surrogate posterior)} The approximate posterior $\tilde\pi_\bt(\z \mid y)$ does not collapse in a way that makes $\psi_\bt(y,z)$ constant or uninformative. That is, its support must preserve relevant variation in $z$ conditional on $y$ for distinguishing $\bt$.
+    \item \textbf{(Identifiability of the population equation)} The population moment equation $\Phi(\bt)$ has a unique solution at $\bt_0$, which can be checked by studying injectivity of the map
+    \[
+    \bt \mapsto \Phi(\bt)
+    \]
+    over the parameter space $\Theta$.
+\end{enumerate}
+%
+If these conditions are satisfied, then the SME moment equations identify the true parameter $\bt_0$ consistently. In practice, these requirements amount to verifying that the chosen estimating function $\psi_\bt$ captures key features of the conditional distribution, and that the approximate posterior is not degenerate in a way that destroys parameter identifiability.
+
+
+
+}
+\subsubsection{Asymptotic Normality}
+
+\subsection{Estimation under Exponential Family Models}
+\label{sct:exponential-family}
+
+Suppose the conditional distribution \( f_\bt(\y \mid \z) \) belongs to the exponential family:
+\[
+f_\bt(\y \mid \z) = \exp\left\{ T(\y)^\top \eta(\z, \bt) - A(\eta(\z, \bt)) + B(\y) \right\},
+\]
+where \( T(\y) \) is the sufficient statistic, \( \eta(\z, \bt) \) is the natural parameter, and \( A(\cdot) \) is the log-partition function. We define
+\begin{equation}
+\psi_\bt(\y, \z) = T(\y) \cdot \frac{\partial \eta(\z, \bt)}{\partial \bt},
+\label{eqn:psi-expfam}
+\end{equation}
+%
+which yields our SME estimating equations \eqref{eqn:sme-estimator} for exponential families :
+
+\begin{tcolorbox}[colback=blue!3!white,colframe=blue!70!black,title=SME Exponential Family Estimating Equation]
+\begin{equation}
+\label{eqn:sme-expfam}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\Z_i\sim\tilde\pi_\bt(\z \mid \y_i)} 
+\left[
+T(\y_i) \cdot 
+\frac{\partial \eta(\Z_i, \bt)}{\partial \bt}
+\right]
+=
+\mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\Z\sim\tilde\pi_\bt(\z \mid \Y)} 
+\left[ 
+T(\Y) \cdot 
+\frac{\partial \eta(\Z, \bt)}{\partial \bt}
+\right]
+\right].
+\end{equation}
+\end{tcolorbox}
+
+\begin{tcolorbox}[colback=yellow!5!white,colframe=yellow!60!black,title=Main Objective: Deep Dive with Exponential Families]
+The idea here is to show the special case of our version for exponential families, and show that it satisfies the general condition. The strategy is to assume identifiability of the MLE, and we go from there, saying that we don't lose much by deviating from the true posterior distribution. We don't lose consistency, the only cost is a bit of efficiency, with no cost at all if we have an exact approximation. This reassures people that the estimator is well grounded!
+\begin{enumerate}
+    \item \textbf{Identifiability:} Assume that the MLE is identifiable (i.e., the population score equation has a unique root). Prove that identifiability is preserved under the SME formulation, even when the posterior is approximated by \( \tilde\pi_\bt(\z \mid \y) \).
+    
+    \item \textbf{Consistency:} Use the identifiability result and standard regularity conditions (e.g., uniform convergence of the empirical estimating equation) to establish consistency of the SME estimator.
+    
+    \item \textbf{Efficiency:} Show that when \( \tilde\pi_\bt(\z \mid \y) = \pi_\bt(\z \mid \y) \), the SME estimator is asymptotically equivalent to the MLE. Since the MLE is asymptotically efficient, this implies that the SME estimator also attains the Cramér–Rao lower bound in this case.
+\end{enumerate}
+\end{tcolorbox}
+
+\subsubsection{Identifiability}
+If we can say that 
+
+$$
+\phi(\bt) = \mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\Z\sim\pi_\bt(\z \mid \Y)} 
+\left[ 
+T(\Y) \cdot 
+\frac{\partial \eta(\Z, \bt)}{\partial \bt}
+\right]
+\right]
+$$
+
+identifies $\bt$ in the sense that 
+
+$$
+\bt \neq \bt' \Rightarrow \phi(\bt)\neq\phi(\bt'),
+$$
+then we're golden.
+
+This should be the case if MLE is identifiable because the MLE equation somehow define something like this.
+
+\subsubsection{Consistency}
+
+\section*{Lemma (Consistency of SME under approximate posterior)}
+
+Let \( \tilde{\pi}_\bt(\z \mid \y) \) be an approximation to the true posterior \( \pi_\bt(\z \mid \y) \), possibly biased. Define the empirical estimating function:
+\begin{equation}
+\label{eq:SME-estimating-equation}
+\Psi_n(\bt) 
+= \frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\tilde\pi_\bt(\z \mid \y_i)} 
+\left[
+T(\y_i) \cdot 
+\frac{\partial \eta(\z, \bt)}{\partial \bt}
+\right],
+\end{equation}
+and its population counterpart:
+\begin{equation}
+\label{eq:SME-population-target}
+\Phi(\bt)
+= \mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\tilde\pi_\bt(\z \mid \Y)} 
+\left[
+T(\Y) \cdot 
+\frac{\partial \eta(\z, \bt)}{\partial \bt}
+\right]
+\right].
+\end{equation}
+
+Assume:
+\begin{itemize}
+    \item[(A1)] The function \( \bt \mapsto \Phi(\bt) \) is continuous on a compact set containing \( \bt_0 \).
+    \item[(A2)] The approximation \( \tilde{\pi}_\bt(\z \mid \y) \) satisfies: \( \sup_{\bt \in B} \| \Psi_n(\bt) - \Phi(\bt) \| \xrightarrow{p} 0 \) for every compact set \( B \subset \mathbb{R}^d \).
+    \item[(A3)] The equation \( \Phi(\bt) = 0 \) has a unique root at \( \bt = \bt_0 \).
+\end{itemize}
+
+Then any sequence of estimators \( \hat\bt_n \) solving
+\[
+\Psi_n(\hat\bt_n) = 0
+\]
+satisfies
+\[
+\hat\bt_n \xrightarrow{p} \bt_0.
+\]
+
+\subsection*{Sketch of Proof}
+
+This follows from standard Z-estimation theory (e.g., van der Vaart, 1998, Thm. 5.9):
+
+\begin{itemize}
+    \item Assumption (A2) ensures uniform convergence in probability of the empirical process \( \Psi_n(\bt) \) to the population target \( \Phi(\bt) \).
+    \item Assumption (A3) guarantees that the population equation \( \Phi(\bt) = 0 \) has a unique solution \( \bt_0 \).
+    \item By continuity (A1) and uniform convergence (A2), standard arguments yield \( \hat\bt_n \xrightarrow{p} \bt_0 \).
+\end{itemize}
+
+\noindent
+Importantly, this result does not require that \( \tilde{\pi}_\bt(\z \mid \y) \approx \pi_\bt(\z \mid \y) \) pointwise. The approximation is corrected \emph{on average}, so that consistency follows from the properties of the estimating equation rather than the fidelity of \( \tilde{\pi} \).
+
+\subsubsection{Efficiency}
+To show the SME is efficient, we simply need to show that
+\begin{enumerate}
+\item it is consistent (identifiable)
+\item the MLE solves its estimating equations asymptotically
+\end{enumerate}
+this means that our estimator is asymptotically equivalent to the MLE and therefore achieves the crame-rao lower bound.
+
+Consistency is an earlier result. We now show the asymptotic equivalence to the MLE.
+\begin{lemma}[Equivalence to MLE under the true posterior]
+\label{lemma:equivalence-true-posterior}
+Suppose that the conditional distribution \( f_\bt(\y \mid \z) \) belongs to the exponential family, and define \( \psi_\bt(\y, \z) \) as in Equation~\eqref{eqn:psi-expfam}. Then, under the true posterior \( \tilde \pi_\bt(\z \mid \y) = \pi_\bt(\z \mid \y) \), the SME estimator, solution to \eqref{eqn:sme-expfam}, is asymptotically equivalent to the MLE.
+\end{lemma}
+
+\begin{proof}
+We begin by expanding the score function of the conditional log-likelihood. For exponential families, we have
+\[
+\nabla_\bt \log f_\bt(\y_i \mid \Z_i)
+= \left( T(\y_i) - \nabla_\eta A(\eta(\Z_i, \bt)) \right)^\top 
+\frac{\partial \eta(\Z_i, \bt)}{\partial \bt},
+\]
+where \( \nabla_\eta A(\eta(\Z_i, \bt)) = \mathbb{E}_{\Y \sim f_\bt(\y \mid \Z_i)}[T(\Y)] \) is the conditional expectation of the sufficient statistic.
+
+Substituting this into the MLE estimating equation, we obtain:
+\begin{equation}
+\label{eqn:expfam-estimating-equation}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\Z_i \sim \pi_\bt(\z_i \mid \y_i)} 
+\left[
+\left( T(\y_i) - \nabla_\eta A(\eta(\Z_i, \bt)) \right)^\top 
+\frac{\partial \eta(\Z_i, \bt)}{\partial \bt}
+\right]
+= 0,
+\end{equation}
+which can equivalently be written as
+\begin{equation}
+\label{eqn:expfam-estimating-equation-split}
+\underbrace{
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\Z_i \sim \pi_\bt(\z_i \mid \y_i)} 
+\left[
+T(\y_i)^\top \cdot \frac{\partial \eta(\Z_i, \bt)}{\partial \bt}
+\right]
+}_{\text{LHS}}
+=
+\underbrace{
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\Z_i \sim \pi_\bt(\z_i \mid \y_i)} 
+\left[
+\nabla_\eta A(\eta(\Z_i, \bt))^\top \cdot \frac{\partial \eta(\Z_i, \bt)}{\partial \bt}
+\right]
+}_{\text{RHS}}.
+\end{equation}
+
+\paragraph{Left-hand side.} Under the assumption \( \tilde \pi_\bt(\Z_i \mid \y_i) = \pi_\bt(\Z_i \mid \y_i) \), the left-hand side of Equation~\eqref{eqn:expfam-estimating-equation-split} coincides exactly with the left-hand side of the SME estimating equation~\eqref{eqn:sme-expfam}.
+
+\paragraph{Right-hand side.} Now consider the right-hand side:
+\[
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\Z_i\sim \pi_\bt(\z_i \mid \y_i)} 
+\left[
+\nabla_\eta A(\eta(\Z_i, \bt))^\top 
+\cdot 
+\frac{\partial \eta(\Z_i, \bt)}{\partial \bt}
+\right].
+\]
+Since the \( \y_i \) are i.i.d. draws from \( f_{\bt_0}(\y) \), and under regularity conditions ensuring uniform integrability, we may invoke the law of large numbers to write:
+\begin{align*}
+\frac{1}{n} \sum_{i=1}^n 
+&\mathbb{E}_{\Z_i \sim \pi_\bt(\z_i \mid \y_i)} 
+\left[
+\nabla_\eta A(\eta(\Z_i, \bt))^\top 
+\cdot 
+\frac{\partial \eta(\Z_i, \bt)}{\partial \bt}
+\right] \\
+&= \mathbb{E}_{\Y \sim f_{\bt_0}(\y)} 
+\left[
+\mathbb{E}_{\Z\sim \pi_\bt(\z \mid \Y)} 
+\left[
+\nabla_\eta A(\eta(\Z, \bt))^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt)}{\partial \bt}
+\right]
+\right]
++ \mathcal{O}_p(n^{-1/2}).
+\end{align*}
+
+Evaluating this at the MLE, and using that \( \hat\bt^{\text{MLE}} \to \bt_0 \) in probability, we obtain:
+\begin{multline}
+\label{eqn:rhs-eval-at-mle}
+\mathbb{E}_{\Y \sim f_{\bt_0}(\y)} 
+\left[
+\mathbb{E}_{\Z \sim \pi_\bt(\z \mid \Y)} 
+\left[
+\nabla_\eta A(\eta(\Z, \bt))^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt)}{\partial \bt}
+\right]
+\right] \Big|_{\bt = \hat\bt^{\text{MLE}}}
+=\\
+\mathbb{E}_{\Y \sim f_{\bt_0}(\y)} 
+\left[
+\mathbb{E}_{\Z \sim \pi_{\bt_0}(\Z \mid \Y)} 
+\left[
+\nabla_\eta A(\eta(\Z, \bt_0))^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt_0)}{\partial \bt}
+\right]
+\right]
++ \mathcal{O}_p(n^{-1/2})
+=\\
+\mathbb{E}_{\Z \sim \pi(\z)} 
+\left[
+\nabla_\eta A(\eta(\Z, \bt_0))^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt_0)}{\partial \bt}
+\right]
++ \mathcal{O}_p(n^{-1/2}).
+\end{multline}
+
+Now use the identity \( \nabla_\eta A(\eta(\Z, \bt_0)) = \mathbb{E}_{\Y \sim f_{\bt_0}(\y \mid \Z)}[T(\Y)] \), to obtain:
+\begin{multline}
+\mathbb{E}_{\Z \sim \pi(\z)} 
+\left[
+\nabla_\eta A(\eta(\Z, \bt_0))^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt_0)}{\partial \bt}
+\right]
+=\\
+\mathbb{E}_{\Z \sim \pi(\z)} 
+\left[
+\mathbb{E}_{\Y \sim f_{\bt_0}(\y \mid \Z)}[T(\Y)]^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt_0)}{\partial \bt}
+\right]
+=\\
+\mathbb{E}_{(\Y, \Z) \sim f_{\bt_0}(\y, \z)} 
+\left[
+T(\Y)^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt_0)}{\partial \bt}
+\right].
+\end{multline}
+
+\paragraph{Conclusion.} Putting everything together, we conclude:
+\begin{multline}
+\mathbb{E}_{\Y \sim f_{\bt_0}(\y)} 
+\left[
+\mathbb{E}_{\Z\sim \pi_\bt(\z \mid \Y)} 
+\left[
+\nabla_\eta A(\eta(\Z, \bt))^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt)}{\partial \bt}
+\right]
+\right] \Big|_{\bt = \hat\bt^{\text{MLE}}}
+=\\
+\mathbb{E}_{\Y \sim f_{\bt_0}(\y)} 
+\left[
+\mathbb{E}_{f_{\bt_0}(\Z \mid \Y)} 
+\left[
+T(\Y)^\top 
+\cdot 
+\frac{\partial \eta(\Z, \bt_0)}{\partial \bt}
+\right]
+\right]
++ \mathcal{O}_p(n^{-1/2}),
+\end{multline}
+which is asymptotically equivalent to the RHS Equation~\eqref{eqn:sme-expfam} evaluated at $\bt = \hat\bt^{\text{MLE}}$
+
+
+{\color{red}
+Since the left-hand sides of the SME and MLE estimating equations coincide under the assumption \( \pi_\bt(\z \mid \y) = f_\bt(\z \mid \y) \), and their right-hand sides are asymptotically equivalent up to \( \mathcal{O}_p(n^{-1/2}) \) when evaluated at \( \hat\bt^{\text{MLE}} \), it follows that both estimators approximately solve the same estimating equation asymptotically.
+
+To conclude asymptotic equivalence of the estimators themselves, we appeal to the general theory of Z-estimators. Specifically, by Theorem 5.21 in van der Vaart (1998), if two consistent estimators solve estimating equations whose differences are \( \mathcal{O}_p(n^{-1/2}) \), then the estimators themselves differ by at most \( \mathcal{O}_p(n^{-1/2}) \).
+
+Hence, the SME estimator is asymptotically equivalent to the MLE:
+\[
+\hat\bt^{\text{SME}} - \hat\bt^{\text{MLE}} = \mathcal{O}_p(n^{-1/2}).
+\]
+
+This completes the proof.
+
+}
+
+
+{\color{blue}
+\paragraph{Consistency of the SME estimator.}
+To apply Theorem 5.21 in van der Vaart (1998) and conclude asymptotic equivalence with the MLE, it remains to establish the consistency of the SME estimator.
+
+Define the estimating function:
+\[
+\Psi_n^{\text{SME}}(\bt) := \frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z_i \sim \pi_\bt(\z \mid \y_i)} \left[ T(\y_i)^\top \cdot \frac{\partial \eta(\Z_i, \bt)}{\partial \bt} \right].
+\]
+Under standard regularity conditions (e.g., continuity and integrability of the integrand, compactness of the parameter space), and using that the \( \y_i \) are i.i.d. from \( f_{\bt_0} \), the uniform law of large numbers yields:
+\[
+\sup_{\bt \in \Theta} \left\| \Psi_n^{\text{SME}}(\bt) - \Psi(\bt) \right\| \xrightarrow{p} 0,
+\quad \text{where} \quad
+\Psi(\bt) := \mathbb{E}_{\Y \sim f_{\bt_0}(\y)} \left[ \mathbb{E}_{\Z \sim \pi_\bt(\z \mid \Y)} \left[ T(\Y)^\top \cdot \frac{\partial \eta(\Z, \bt)}{\partial \bt} \right] \right].
+\]
+Now observe that under the assumption \( \pi_\bt(\z \mid \y) = f_\bt(\z \mid \y) \), we have:
+\[
+\Psi(\bt) = \mathbb{E}_{(\Y, \Z) \sim f_{\bt_0}} \left[ T(\Y)^\top \cdot \frac{\partial \eta(\Z, \bt)}{\partial \bt} \right],
+\]
+and this function has a **unique root at \( \bt = \bt_0 \)** under standard identifiability assumptions.
+
+Therefore, by Theorem 5.9 in van der Vaart (1998), \( \hat\bt^{\text{SME}} \xrightarrow{p} \bt_0 \), i.e., the SME estimator is consistent.
+
+}
+\end{proof}
+
+
+
+
+
+RESULT 1 (LEMMA, we will use it in proofs but maybe not a theorem worthy)
+
+Under the true posterior, estimating equations \eqref{eqn:sme-expfam} are asymptotically equivalent to those of the MLE \eqref{eqn:MLE-estimating-equations}. 
+
+STATE NICELY AND SHOW IT NOW. I GIVE YOU A HINT
+
+
+
+
+
+
+This is the component of the score function that involves observable quantities and serves as the core object in our estimator.
+
+
+Taking the gradient of the conditional log-likelihood with respect to \(\bt\) yields:
+\[
+\nabla_\bt \log f_\bt(\y \mid \z) = \left( T(\y) - \nabla_\eta A(\eta(\z, \bt)) \right)^\top \frac{\partial \eta(\z, \bt)}{\partial \bt}.
+\]
+%
+That is, the estimating equations for the MLE \eqref{eqn:MLE-estimating-equations} become:
+%
+\begin{equation}
+\label{eqn:expfam-estimating-equation}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\pi_\bt(\z_i \mid \y_i)} 
+\left[
+\left( T(\y_i) - \nabla_\eta A(\eta(\z_i, \bt)) \right)^\top 
+\frac{\partial \eta(\z_i, \bt)}{\partial \bt}
+\right]
+= 0.
+\end{equation}
+%
+Since \( \nabla_\eta A(\eta(\z_i, \bt)) \) is the conditional expectation of the sufficient statistic under the exponential family, i.e.,
+\[
+\nabla_\eta A(\eta(\z_i, \bt)) = \mathbb{E}_{\Y \sim f_\bt(\y \mid \z_i)}[T(\Y)],
+\]
+Equation~\eqref{eqn:expfam-estimating-equation} becomes
+\begin{equation}
+\label{eqn:expfam-estimating-equation-clean}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\pi_\bt(\z_i \mid \y_i)} 
+\left[
+\left( T(\y_i) - \mathbb{E}_{\Y \sim f_\bt(\y \mid \z_i)}[T(\Y)] \right)^\top 
+\frac{\partial \eta(\z_i, \bt)}{\partial \bt}
+\right]
+= 0.
+\end{equation}
+%
+Equivalently:
+%
+\begin{equation}
+\label{eqn:expfam-estimating-equation-split-correct}
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\pi_\bt(\z_i \mid \y_i)} 
+\left[ 
+T(\y_i)^\top 
+\cdot 
+\frac{\partial \eta(\z_i, \bt)}{\partial \bt}
+\right]
+=
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{\pi_\bt(\z_i \mid \y_i)} 
+\left[ 
+\mathbb{E}_{\Y \sim f_\bt(\y \mid \z_i)}\left[T(\Y)^\top 
+\cdot 
+\frac{\partial \eta(\z_i, \bt)}{\partial \bt}\right]
+\right].
+\end{equation}
+
+
+
+This form emphasizes the contrast between the observed sufficient statistics \( T(\y_i) \) and their model-based conditional expectations, propagated through the derivative of the natural parameter. It naturally motivates the use of \( \psi_\bt(\y, \z) \) as a generalized estimating function in our SME framework, where the structure of the exponential family guides a meaningful choice of surrogate moments.
+
+
+Our idea is to define:
+\[
+\psi_\bt(\y, \z) = T(\y) \cdot \frac{\partial \eta(\z, \bt)}{\partial \bt}.
+\]
+This is the component of the score function that involves observable quantities and serves as the core object in our estimator.
+
+If the latent variable \(\Z\) is observed, the maximum likelihood estimator (MLE) solves the usual score equation:
+\[
+\frac{1}{n} \sum_{i=1}^n \nabla_\bt \log f_\bt(\Y_i \mid \Z_i) = 0,
+\]
+which, when expanded, gives:
+\[
+\frac{1}{n} \sum_{i=1}^n \left( T(\Y_i) - \mathbb{E}[T(\Y_i) \mid \Z_i] \right)^\top \frac{\partial \eta(\Z_i, \bt)}{\partial \bt} = 0,
+\]
+and is exactly equivalent to the moment-matching condition:
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, \Z_i)
+=
+\frac{1}{n} \sum_{i=1}^n \mathbb{E}\left[ \psi_\bt(\Y_i, \Z_i) \mid \Z_i \right].
+\]
+Here, the left-hand side represents empirical statistics, while the right-hand side gives model-implied expectations conditional on the latent variables. Thus, when \(\Z\) is known, the MLE balances empirical and theoretical estimating functions exactly.
+
+When \(\Z\) is known but random, this equality can be approximated by:
+% HELLO GUIGUI HELLO JUJU <3
+% Tellement cool
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, \Z_i)
+= \mathbb{E}_{(\Y, \Z) \sim f_\bt}\left[ \psi_\bt(\Y, \Z) \right],
+\]
+where the expectation is taken under the joint distribution of \((\Y, \Z)\). Our estimator builds directly on this principle.
+
+When \(\Z\) is unobserved, we retain the same estimating function and substitute \(\Z\) with a surrogate \( e(\y, \bt) \), leading to the modified equation:
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e(\Y_i, \bt)) 
+=
+\mathbb{E}_{\Y \sim f_\bt} \left[ \psi_\bt(\Y, e(\Y, \bt)) \right].
+\]
+This equation compares empirical and model-implied quantities using a deterministic transformation of the data to approximate the latent structure. Importantly, both sides are evaluated under the marginal distribution of \(\Y\), so the validity of the identity does not depend on the surrogate being exact, but rather on its stability and approximation quality.
+
+Moreover, when \(\Z\) is observed, the difference between the two sides of the equation defines a natural ascent direction for maximum likelihood:
+\[
+\nabla_\bt \ell_n(\bt) 
+= 
+\mathbb{E}_{(\Y, \Z) \sim f_\bt} \left[ \psi_\bt(\Y, \Z) \right] 
+- 
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, \Z_i).
+\]
+This further supports our choice of \(\psi_\bt\): it not only yields Fisher consistency through moment matching, but also mirrors the geometry of likelihood maximization in the complete-data case.
+
+Heuristically, we expect this behavior to persist when \( \Z \) is replaced by a high-quality surrogate \( e(\Y, \bt) \). If the surrogate is consistent or well-calibrated, the estimating equation retains an approximately score-like structure, and the residual continues to point toward better-fitting parameters. While we do not formally prove numerical stability or convergence guarantees under approximation, our formulation inherits many desirable properties of the MLE up to the quality of the surrogate.
+
+
+
+
+
+{\color{red} OLD}
+
+
+Under appropriate regularity conditions for $\psi_\bt$, a consistent estimator of $\bt_0$ can be obtained as the solution to the equation:
+\begin{equation}
+\label{eq:fisher-consistency}
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\y_i, \z_i) = \mathbb{E}_{(\Y, \Z) \sim F_\bt} \left[ \psi_\bt(\Y, \Z) \right].
+\end{equation}
+This formulation ensures \emph{Fisher consistency}, in the sense that the true parameter $\bt_0$ satisfies the estimating equation at the population level. Indeed, taking expectations on both sides shows that $\bt = \bt_0$ solves the equation:
+\[
+\mathbb{E}_{(\Y, \Z) \sim F_{\bt_0}} \left[ \psi_{\bt_0}(\Y, \Z) \right] = \mathbb{E}_{(\Y, \Z) \sim F_{\bt_0}} \left[ \psi_{\bt_0}(\Y, \Z) \right],
+\]
+which holds trivially. The identity \eqref{eq:fisher-consistency} thus serves as a guiding principle for constructing estimators that remain consistent when the model is correctly specified.
+
+
+
+However, since the latent variables $\z_i$ are not observed, they must be marginalized out using their conditional distribution given the data, i.e., the posterior $\pi_\bt(\z \mid \y) \propto f_\bt(\y \mid \z)\pi(\z)$.
+
+However, since the latent variables $\z_i$ are not observed, they must be marginalized out using their conditional distribution given the data, i.e., the posterior $\pi_\bt(\z \mid \y) \propto f_\bt(\y \mid \z)\pi(\z)$. Equation~\eqref{eq:fisher-consistency} becomes:
+\begin{equation}
+\label{eq:law-total-expectation}
+\frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z \mid \y_i} \left[ \psi_\bt(\y_i, \Z) \right]
+=
+\mathbb{E}_{\Y \sim f_\bt} \left[ \mathbb{E}_{\Z \mid \Y} \left[ \psi_\bt(\Y, \Z) \right] \right],
+\end{equation}
+where the inner expectations are taken with respect to the true posterior $\pi_\bt(\z \mid \y)$. Fisher consistency is retained etc etc.
+
+
+Unfortunately, this posterior is often intractable. To address this challenge, we introduce a \emph{surrogate distribution} $q_\phi(\z \mid \y)$ over $\mathcal{Z}$, which serves as a tractable approximation to the true posterior. The surrogate distribution is parameterized by $\phi$ and may take various forms, including variational approximations where $\phi$ corresponds to the parameters of an encoder network, Laplace approximations centered at the posterior mode, or degenerate distributions concentrated at a single point estimate such as the maximum a posteriori (MAP). This flexibility allows the method to encompass both probabilistic and deterministic imputation strategies, making it broadly applicable across a wide range of latent variable models.
+
+The \emph{Surrogate Moment Estimation (SME)} estimator $\hat\bt_n$ is then defined as the solution to the empirical version of the modified moment-matching equation:
+\begin{equation}
+\frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z \sim q_\phi(\cdot \mid \y_i)} \left[ \psi_\bt(\y_i, \Z) \right]
+=
+\mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y)} 
+\left[ 
+\psi_\bt(\Y, \Z)
+\right]
+\right].
+\end{equation}
+This equation defines a root-finding problem over $\bt$, in which the left-hand side represents the empirical average of surrogate expectations, and the right-hand side is the model-based expectation under the marginal distribution of $\Y$. When the surrogate distribution $q_\phi(\z \mid \y)$ closely approximates the true posterior, the resulting estimator $\hat\bt_n$ is expected to be consistent and asymptotically unbiased. In particular, when $q_\phi(\z \mid \y)$ is a Dirac measure at $e(\y, \bt)$, \eqref{eq:sme-estimator} reduces to a point-imputation method, discussed next.
+
+
+
+
+
+When the surrogate distribution $q_\phi(\z \mid \y)$ is chosen to be a Dirac measure at a deterministic imputation $e(\y, \bt)$, i.e.,
+\[
+q_\phi(\z \mid \y) = \delta_{e(\y, \bt)}(\z),
+\]
+Equation~\eqref{eq:sme-estimator} reduces to the point-imputed moment estimator:
+\begin{equation}
+\label{eq:imputed-estimator}
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\y_i, e(\y_i, \bt)) 
+= 
+\mathbb{E}_{\Y \sim f_\bt} 
+\left[ 
+\psi_\bt(\Y, e(\Y, \bt)) 
+\right].
+\end{equation}
+
+In particular, a wide class of imputation functions $e : \mathcal{Y} \times \bm{\Theta} \to \mathcal{Z}$ can be defined implicitly as the solution to a system of equations:
+\begin{equation}
+\label{def:e:implicit}
+\phi(\y, \bt, e(\y, \bt)) = 0,
+\end{equation}
+for a smooth function $\phi : \mathcal{Y} \times \bm{\Theta} \times \mathcal{Z} \to \mathbb{R}^q$. Provided standard regularity conditions hold, the implicit function theorem ensures the existence and differentiability of $e(\y, \bt)$ with respect to $\bt$.
+
+
+
+{\color{red}
+
+\section{The Framework}
+
+Let $\Y \in \mathcal{Y} \subseteq \mathbb{R}^p$ be observed data and $\Z \in \mathcal{Z} \subseteq \mathbb{R}^q$ an unobserved latent variable. Suppose the model $F_{\bt_0}$ is governed by a parameter $\bt_0 \in \bm{\Theta} \subseteq \mathbb{R}^r$, and define a function $\psi_\bt : \mathcal{Y} \times \mathcal{Z} \to \mathbb{R}^r$ that reflects quantities of interest (e.g., sufficient statistics, score functions, or other estimating features).
+
+
+To account for the unobserved $\Z$, we introduce an imputation function \(e : \mathcal{Y} \times \bm{\Theta} \to \mathcal{Z}\),
+which, for each parameter value $\bt$, maps $\y$ to a value \(e(\y, \bt) \in \mathcal{Z}\) as an approximation to the unknown $\Z$, and is assumed to have a well-defined derivative with respect to $\bt$. A broad class of such functions can be implicitly defined via
+\begin{equation}
+    \phi(\y, \bt, e(\y, \bt)) = 0,
+\label{def:e:implicit}
+\end{equation}
+for some smooth function \(\phi : \mathcal{Y} \times \bm{\Theta} \times \mathcal{Z} \to \mathbb{R}^q\), for instance arising from estimating equations derived from the joint likelihood. For any fixed $\y$, the existence and differentiability of the mapping \(\bt \mapsto e(\y, \bt)\) are given by the implicit function theorem, provided standard regularity conditions hold. In practice, \(e(\y, \bt)\) may be computed using numerical solvers (e.g., MAP estimation), or implemented as a parametric function (e.g., a neural network) trained to approximately satisfy Equation~\eqref{def:e:implicit}.
+
+
+In place of a point estimate \( e(\y, \bt) \) for the latent variable \( \Z \), we now consider a conditional distribution \( q_\phi(\z \mid \y) \) over \( \mathcal{Z} \), which serves as a surrogate for the intractable true posterior \( \pi_\bt(\z \mid \y) \propto f_\bt(\y \mid \z)\pi(\z) \). This distribution may either be derived from a variational approximation (e.g., amortized inference using a neural network encoder), or from a principled approximation such as Laplace or importance sampling.
+
+
+
+Then, our Surrogate Moment Estimation (SME) estimator $\hat\bt_n$ is defined as the solution to the generalized estimating equations:
+\begin{equation}
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e(\Y_i, \bt)) 
+= 
+\mathbb{E}_{\Y \sim f_\bt} 
+\left[ 
+\psi_\bt(\Y, e(\Y, \bt)) 
+\right].
+\tag{2}
+\end{equation}
+
+
+
+Given such an approximation, we define the estimator \( \hat\bt_n \) as the solution to the modified moment-matching equation:
+\begin{equation}
+\label{eq:vae-estimator}
+\frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y_i^0)} \left[ \psi_\bt(\Y_i^0, \Z) \right]
+=
+\mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y)} 
+\left[ 
+\psi_\bt(\Y, \Z)
+\right]
+\right].
+\end{equation}
+
+When \( q_\phi(\z \mid \y) \) is chosen as a degenerate distribution concentrated at \( e(\y, \bt) \), Equation~\eqref{eq:vae-estimator} recovers the pointwise estimator of Equation~(2) as a special case.
+
+
+
+
+
+Under standard regularity conditions, our estimator $\hat\bt_n$ is both consistent and asymptotically normal. In the just-identified setting—where the dimension of the parameter vector $\bt$ matches that of the moment function $\psi_\bt(\y, \z)$—these properties follow directly from classical results in generalized method of moments (GMM) theory. The asymptotic distribution takes a closed-form expression involving the Jacobian and variance of the estimating function. We formally state these results, along with the necessary assumptions, in Appendix~\ref{appendix:theory}.
+
+For models in which a parameter is identifiable, our method yields a consistent estimator and provides a principled way to derive its asymptotic distribution via standard GMM theory. In more general settings, our method ensures that the generative mechanism is consistently estimated, even when individual parameters may not be fully identifiable. This makes the approach particularly valuable in complex or high-dimensional models where parameter identifiability is limited but predictive or generative accuracy remains essential.
+
+
+The formulation above is general and applies beyond any specific distributional assumption. In the following section, we illustrate the estimator in the context of exponential family models, where the structure of the conditional distribution allows for a clean decomposition of the estimating function. This setting serves as a motivating example throughout the paper, but the estimator itself remains applicable to broader classes of models, provided an appropriate choice of $\psi_\bt$ and surrogate function $e(\y, \bt)$.
+
+}
+
+\section{JB theory}
+
+\newcommand{\R}{\mathbb{R}}
+
+\subsection{General setting}
+
+We consider some function $\psi_\theta:\mathcal{Y}\times \mathcal{Z} \to \mathbb{R}^r$ and a surrogate function $e : \mathcal{Y} \times \bm{\Theta} \to \mathcal{Z}$
+Our estimator $\hat\bt_n$ is defined as the solution to the system of equations:
+\begin{equation}
+\Psi_n(\theta) := \frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e(\Y_i, \bt)) 
+-
+\mathbb{E}_\bt
+\left[ 
+\psi_\bt(\Y, e(\Y, \bt)) 
+\right] = o_p(1).
+\end{equation}
+By definition we have Fisher consistency.
+We assume the following conditions.
+
+\begin{assumptionA}\label{ass. uniqueness}
+For every $\varepsilon>0$,
+$$
+\inf_{\substack{\theta\in\Theta\\d(\theta,\theta_0)\ge\varepsilon}}
+\bigl\| \E_\bt \psi_\bt(Y_i, e(Y_i,\bt) ) - \E_{\bt^0} \psi_\bt(Y_i, e(Y_i,\bt) ) \bigr\|
+>0.
+$$
+\end{assumptionA}
+
+\begin{assumptionA}\label{ass. bounded squared score}
+We have:
+$\E \bigl(\Psi(\bt_0) \Psi(\bt_0)^\top \bigr)<\infty$
+\jb{Seems fine.}
+\end{assumptionA}
+
+\begin{assumptionA}\label{ass. score derivative}
+$\E\dot\Psi(\bt_0)$ is non-singular. We need conditions on the derivative of $e(Y,\bt)$ w.r.t $\bt$.
+\end{assumptionA}
+
+\begin{assumptionA}\label{ass. score second derivative}
+$\ddot\Psi_n(\tilde\theta_n)=O_P(1)$
+\end{assumptionA}
+
+
+\begin{theorem}
+Under Assumption \ref{ass. uniqueness} we have $ \hat\bt_n \to \bt_0$.
+\end{theorem}
+
+\begin{theorem}
+Under Assumption \ref{ass. uniqueness}--\ref{ass. score second derivative}, $\Theta$ is compact, %(we can get around this one)
+$\psi$ is continuous, we have
+\begin{align*}
+  \sqrt{n}\,(\hat\theta_n - \theta_0)
+  &\;=\;
+  - \sqrt{n} \dot\Psi_n(\theta_0)^{-1} \Psi_n(\theta_0) +o_p(1) \\
+  &\rightarrow N\!\Bigl(0, V^{-1} J V^{-1} \Bigr).
+\end{align*}
+where $V =\dot\Psi_n(\theta_0) $ and $J= \Psi_n(\theta_0) \Psi_n(\theta_0)^\top$
+\end{theorem}
+
+
+
+\subsection{Alternative approach}
+
+We design a very general approach. Basically, it is sufficient to take estimation equations in the case where $Z$ is known, but random.
+We consider $\psi_\theta$ such that,
+\begin{equation}
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, Z_i) -
+\mathbb{E}_\bt
+\left[ 
+\psi_\bt(\Y, Z ) 
+\right] = o_p(1).
+\end{equation}
+where $Z$ belongs to a parameter space $\mathcal{Z}$ that ensure uniqueness.
+Futhermore, we assume that $\psi$ is such that the above score is a standard M-estimator (differentiability, ect.).
+
+Many estimators can be written like this. 
+For example, least squares is the solutions of: $Z'y - \E_\bt[Z'y]= 0$ (should we specify moment estimators?).
+Furthermore, the condition is that $\mathcal{Z}= \{ Z: Z'Z \text{ is non-singular} \}$.
+
+As $Z$ is non observed we introduce a surrogate function
+$e : \mathcal{Y} \times \bm{\Theta} \to \mathcal{Z}$.
+Our estimator $\hat\bt_n$ is then defined as the solution to the system of equations:
+\begin{equation}
+\Psi_n(\theta) := \frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e(\Y_i, \bt)) 
+-
+\mathbb{E}_\bt
+\left[ 
+\psi_\bt(\Y, e(\Y, \bt)) 
+\right] = o_p(1).
+\end{equation}
+{\color{red} With this framework, I guess we can show all the required conditions.
+Note that somehow, we have to restrict the output of the encoder $e$ to belong to $\mathcal{Z}$, which ensures identifiability.
+}
+Then I guess we have consistency and asymptotic normality.
+However, the asymptotic variance of the estimator may be very large.
+So the second criterion should be to find an $e$ such that it is not too large.
+Maybe we could define a constraint optimization to find the best $e$, i.e. the one that is the closest to the likelyhood estimator (as in a similar fashion that the Huber function is the closest score function to the least square function under robustness constraint).
+
+
+\subsection{Estimation under Exponential Family Models}
+\label{sct:exponential-family}
+
+Suppose the conditional distribution \( f_\bt(\y \mid \z) \) belongs to the exponential family:
+\[
+f_\bt(\y \mid \z) = \exp\left\{ T(\y)^\top \eta(\z, \bt) - A(\eta(\z, \bt)) + B(\y) \right\},
+\]
+where \( T(\y) \) is the sufficient statistic, \( \eta(\z, \bt) \) is the natural parameter, and \( A(\cdot) \) is the log-partition function. Taking the gradient of the conditional log-likelihood with respect to \(\bt\) yields:
+\[
+\nabla_\bt \log f_\bt(\y \mid \z) = \left( T(\y) - \nabla_\eta A(\eta(\z, \bt)) \right)^\top \frac{\partial \eta(\z, \bt)}{\partial \bt}.
+\]
+Because \( \nabla_\eta A(\eta) = \mathbb{E}_\bt[T(\Y) \mid \z] \), this expression highlights a key structural property: the score function separates into a product between the deviation of observed sufficient statistics from their conditional expectation and the Jacobian of the natural parameter.
+
+Let us define the estimating function
+\[
+\psi_\bt(\y, \z) = T(\y) \cdot \frac{\partial \eta(\z, \bt)}{\partial \bt}.
+\]
+This is the component of the score function that involves observable quantities and serves as the core object in our estimator.
+
+If the latent variable \(\Z\) is observed, the maximum likelihood estimator (MLE) solves the usual score equation:
+\[
+\frac{1}{n} \sum_{i=1}^n \nabla_\bt \log f_\bt(\Y_i \mid \Z_i) = 0,
+\]
+which, when expanded, gives:
+\[
+\frac{1}{n} \sum_{i=1}^n \left( T(\Y_i) - \mathbb{E}[T(\Y_i) \mid \Z_i] \right)^\top \frac{\partial \eta(\Z_i, \bt)}{\partial \bt} = 0,
+\]
+and is exactly equivalent to the moment-matching condition:
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, \Z_i)
+=
+\frac{1}{n} \sum_{i=1}^n \mathbb{E}\left[ \psi_\bt(\Y_i, \Z_i) \mid \Z_i \right].
+\]
+Here, the left-hand side represents empirical statistics, while the right-hand side gives model-implied expectations conditional on the latent variables. Thus, when \(\Z\) is known, the MLE balances empirical and theoretical estimating functions exactly.
+
+When \(\Z\) is known but random, this equality can be approximated by:
+% HELLO GUIGUI HELLO JUJU <3
+% Tellement cool
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, \Z_i)
+= \mathbb{E}_{(\Y, \Z) \sim f_\bt}\left[ \psi_\bt(\Y, \Z) \right],
+\]
+where the expectation is taken under the joint distribution of \((\Y, \Z)\). Our estimator builds directly on this principle.
+
+When \(\Z\) is unobserved, we retain the same estimating function and substitute \(\Z\) with a surrogate \( e(\y, \bt) \), leading to the modified equation:
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e(\Y_i, \bt)) 
+=
+\mathbb{E}_{\Y \sim f_\bt} \left[ \psi_\bt(\Y, e(\Y, \bt)) \right].
+\]
+This equation compares empirical and model-implied quantities using a deterministic transformation of the data to approximate the latent structure. Importantly, both sides are evaluated under the marginal distribution of \(\Y\), so the validity of the identity does not depend on the surrogate being exact, but rather on its stability and approximation quality.
+
+Moreover, when \(\Z\) is observed, the difference between the two sides of the equation defines a natural ascent direction for maximum likelihood:
+\[
+\nabla_\bt \ell_n(\bt) 
+= 
+\mathbb{E}_{(\Y, \Z) \sim f_\bt} \left[ \psi_\bt(\Y, \Z) \right] 
+- 
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, \Z_i).
+\]
+This further supports our choice of \(\psi_\bt\): it not only yields Fisher consistency through moment matching, but also mirrors the geometry of likelihood maximization in the complete-data case.
+
+Heuristically, we expect this behavior to persist when \( \Z \) is replaced by a high-quality surrogate \( e(\Y, \bt) \). If the surrogate is consistent or well-calibrated, the estimating equation retains an approximately score-like structure, and the residual continues to point toward better-fitting parameters. While we do not formally prove numerical stability or convergence guarantees under approximation, our formulation inherits many desirable properties of the MLE up to the quality of the surrogate.
+
+\subsection{Example: Autoencoders}
+
+In autoencoders, the latent surrogate \( \z \) is obtained via a deterministic encoder \( e_\phi(\y) \), parameterized independently from the decoder. The decoder defines a conditional distribution \( f_\bt(\y \mid \z) \), and training proceeds by minimizing the reconstruction loss:
+\[
+\mathcal{L}(\bt, \phi) = -\frac{1}{n} \sum_{i=1}^n \log f_\bt(\Y_i \mid e_\phi(\Y_i)),
+\]
+where the decoder \( f_\bt(y \mid z) \) belongs to an exponential family with natural parameter \( \eta(z, \bt) \), sufficient statistic \( T(y) \), and log-partition function \( A(\eta) \). The log-density thus takes the form:
+\[
+\log f_\bt(y \mid z) = T(y)^\top \eta(z, \bt) - A(\eta(z, \bt)) + \log h(y),
+\]
+and the auto-encoder parameters are trained to maximize the (observed) log-density. Thus, an autoencoder defines a system of stacked estimating equations by taking derivatives of the loss with respect to \( \bt \) and \( \phi \). Specifically, we define:
+\[
+\nabla_\bt \mathcal{L} := -\frac{1}{n} \sum_{i=1}^n 
+\left( T(\Y_i) - \nabla_\eta A(\eta(e_\phi(\Y_i), \bt)) \right)^\top 
+\frac{\partial \eta(e_\phi(\Y_i), \bt)}{\partial \bt},
+\]
+\[
+\nabla_\phi \mathcal{L} := -\frac{1}{n} \sum_{i=1}^n 
+\left( T(\Y_i) - \nabla_\eta A(\eta(e_\phi(\Y_i), \bt)) \right)^\top 
+\frac{\partial \eta(e_\phi(\Y_i), \bt)}{\partial e} \cdot 
+\frac{\partial e_\phi(\Y_i)}{\partial \phi}.
+\]
+The corresponding estimating equations are obtained by setting both gradients to zero:
+\[
+\nabla_\bt \mathcal{L} = 0 \quad \text{and} \quad \nabla_\phi \mathcal{L} = 0,
+\]
+which correspond to the first-order conditions of the maximization of $\mathcal L$. The second estimating equation defines the encoder function \( e_\phi(\Y_i) \) implicitly: this fits into our general framework as a special case where the surrogate \( e(\theta, \Y_i) \) is parameterized by \( \phi \) and does not depend explicitly on \( \theta \).
+
+Now, consider the first estimating equation \( \nabla_\bt \mathcal{L} = 0 \): it can be re-written as
+\[
+\frac{1}{n} \sum_{i=1}^n 
+T(\Y_i)^\top 
+\frac{\partial \eta(e_\phi(\Y_i), \bt)}{\partial \bt}
+=
+\frac{1}{n} \sum_{i=1}^n 
+\nabla_\eta A(\eta(e_\phi(\Y_i), \bt))^\top 
+\frac{\partial \eta(e_\phi(\Y_i), \bt)}{\partial \bt},
+\]
+which, in our exponential family framework, is equivalent to:
+\begin{equation}
+\label{eq:autoencoder-estimating}
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e_\phi(\Y_i)) 
+=
+\frac{1}{n} \sum_{i=1}^n 
+\mathbb{E}_{Y_i^\star \mid Z_i = e_\phi(\Y_i)} 
+\left[ \psi_\bt(Y_i^\star, Z_i) \right],
+\end{equation}
+where the expectation is taken under the conditional model \( f_\theta(y | z) \), and \( Z_i \) is fixed to the encoder output \( e_\phi(\Y_i) \).
+
+We see that the autoencoder estimator for \( \bt \) is not Fisher consistent: in general, the left-hand side does not equal the right-hand side in expectation under the true model. By contrast, our exponential family estimator defines the right-hand side as the marginal expectation:
+\begin{equation}
+\label{eq:marginal-estimating}
+\frac{1}{n} \sum_{i=1}^n \psi_\bt(\Y_i, e_\phi(\Y_i)) 
+=
+\mathbb{E}_{Y^\star \sim f_\theta} 
+\left[ \psi_\bt(Y^\star, e_\phi(Y^\star)) \right],
+\end{equation}
+thereby ensuring consistency of the estimating equation.
+
+We propose an augmented estimator satisfying:
+\[
+\text{LHS} 
+= \alpha \cdot \text{RHS}_{\text{AE}} 
++ (1 - \alpha) \cdot \text{RHS}_{\text{SME}},
+\]
+where  \( \text{LHS} \) is the left-hand side of Equations \eqref{eq:autoencoder-estimating}-\eqref{eq:marginal-estimating},  \( \text{RHS}_{\text{AE}} \), refers to the right-hand side of Equation~\eqref{eq:autoencoder-estimating}, and \( \text{RHS}_{\text{SME}} \) refers to the right-hand side of Equation~\eqref{eq:marginal-estimating}. The parameter \( \alpha \in [0, 1] \) controls the interpolation between the autoencoder formulation and our Fisher consistent estimator. When \( \alpha = 1 \), we recover the standard autoencoder estimator; when \( \alpha = 0 \), we obtain our proposed estimator.
+
+In practice, we implement a computational algorithm that starts with \( \alpha = 1 \), mimicking the good algorithmic stability of autoencoders, and gradually anneals to \( \alpha = 0 \) over training to ensure Fisher consistency in the final estimate. See Appendix~(TODO: WRITE) for implementation details.
+
+\subsection{Example: MAP}
+
+The maximum a posteriori (MAP) estimate is the posterior mode of \( \Z \mid \Y \). For each observation \( i \), it is defined as the root of the following equation:
+\[
+\nabla_{\z} \log f_\bt(\y_i \mid \z) + \nabla_{\z} \log \pi(\z) = 0,
+\]
+which implicitly defines a surrogate function \( e(\y, \bt) \) via the MAP criterion. When this system is solved numerically (e.g., via Newton-Raphson or gradient ascent), \( e(\y, \bt) \) approximates the mode of the conditional distribution \( \Z \mid \Y = \y \).
+
+In practice, rather than solving a new optimization for each \( \y_i \), it is common to learn a parametric encoder \( e_\phi(\y) \) that approximates the MAP mapping. This is done by optimizing the joint log-probability:
+\[
+\log f_\bt(\Y_i \mid e_\phi(\Y_i)) + \log \pi(e_\phi(\Y_i)),
+\]
+which includes both the likelihood and the log-prior on \( Z \). For a standard Gaussian prior \( Z \sim \mathcal{N}(0, I) \), this leads to a regularization term \( -\frac{1}{2} \|e_\phi(\Y_i)\|^2 \) in the objective.
+
+The resulting encoder gradient becomes:
+\[
+\nabla_\phi \mathcal{L}_{\text{MAP}} := -\frac{1}{n} \sum_{i=1}^n 
+\left[ 
+\left( T(\Y_i) - \nabla_\eta A(\eta(e_\phi(\Y_i), \bt)) \right)^\top 
+\frac{\partial \eta(e_\phi(\Y_i), \bt)}{\partial e}
+- e_\phi(\Y_i)^\top
+\right] 
+\cdot \frac{\partial e_\phi(\Y_i)}{\partial \phi}.
+\]
+
+Importantly, under standard regularity conditions, the MAP is consistent for \( \Z \) as \( p \to \infty \), even when \( \bt = \bt_0 \) is fixed. This implies that the surrogate \( e(\y, \bt) \) becomes increasingly accurate in high-dimensional settings. As a result, our estimating equations more closely resemble the true score equations for the marginal log-likelihood, and the resulting estimator converges to the MLE as \(p \to \infty \).
+
+We will see in the VAE setting that this approximation can be improved further using amortized inference mechanisms that incorporate learned uncertainty in a data-dependent way.
+
+
+\section{Example: Variational Auto-Encoders}
+
+In place of a point estimate \( e(\y, \bt) \) for the latent variable \( \Z \), we now consider a conditional distribution \( q_\phi(\z \mid \y) \) over \( \mathcal{Z} \), which serves as a surrogate for the intractable true posterior \( \pi_\bt(\z \mid \y) \propto f_\bt(\y \mid \z)\pi(\z) \). This distribution may either be derived from a variational approximation (e.g., amortized inference using a neural network encoder), or from a principled approximation such as Laplace or importance sampling.
+
+Given such an approximation, we define the estimator \( \hat\bt_n \) as the solution to the modified moment-matching equation:
+\begin{equation}
+\label{eq:vae-estimator}
+\frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y_i^0)} \left[ \psi_\bt(\Y_i^0, \Z) \right]
+=
+\mathbb{E}_{\Y \sim f_\bt}
+\left[
+\mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y)} 
+\left[ 
+\psi_\bt(\Y, \Z)
+\right]
+\right].
+\end{equation}
+
+When \( q_\phi(\z \mid \y) \) is chosen as a degenerate distribution concentrated at \( e(\y, \bt) \), Equation~\eqref{eq:vae-estimator} recovers the pointwise estimator of Equation~(2) as a special case.
+
+As in the autoencoder setting, we can differentiate the corresponding loss function to define the stacked estimating equations for the decoder and encoder parameters. Let \( \psi_\bt(\y, \z) = T(\y) \cdot \frac{\partial \eta(\z, \bt)}{\partial \bt} \) denote the score-like term. Then, we define:
+
+\paragraph{Decoder estimating equation:}
+\begin{align*}
+\nabla_\bt \mathcal{L}_{\text{VAE}} := 
+- \frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y_i)} 
+\left[
+\left( T(\Y_i) - \nabla_\eta A(\eta(\Z, \bt)) \right)^\top 
+\frac{\partial \eta(\Z, \bt)}{\partial \bt}
+\right].
+\end{align*}
+
+\paragraph{Encoder estimating equation:}
+\begin{align*}
+\nabla_\phi \mathcal{L}_{\text{VAE}} := 
+- \frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z \sim q_\phi(\cdot \mid \Y_i)} 
+\left[
+\left( T(\Y_i) - \nabla_\eta A(\eta(\Z, \bt)) \right)^\top 
+\frac{\partial \eta(\Z, \bt)}{\partial \Z} \cdot 
+\frac{\partial \Z}{\partial \phi}
+\right]
++
+\nabla_\phi \text{KL}(q_\phi(\Z \mid \Y_i) \,\|\, \pi(\Z)),
+\end{align*}
+
+where the last term corresponds to the gradient of the KL divergence between the encoder distribution and the prior, as is standard in variational inference.
+
+This formulation retains Fisher consistency when the variational distribution \( q_\phi(\z \mid y) \) is sufficiently expressive and the expectation on the right-hand side is taken under the true marginal model. Moreover, our general framework recovers both the autoencoder and MAP approximations as limiting cases of the variational formulation.
+
+\subsection{A Unifying Approach for Exponential Family Surrogates}
+{\color{red} WORK IN PROGRESS}
+A central insight of our framework is that, across many encoder-decoder models grounded in exponential-family likelihoods, the decoder gradient always arises from the same core estimating equation. What differs between methods is how the latent surrogate \( Z \) is defined or approximated. This observation leads to a unifying view of autoencoders, MAP estimators, variational autoencoders, and other methods as special cases of the same principle.
+
+In all cases, the decoder update is based on the same moment-matching condition:
+\[
+\frac{1}{n} \sum_{i=1}^n \psi_\theta(Y_i, \text{surrogate}(Y_i)) \approx \mathbb{E}_{Y \sim f_\theta} \left[ \psi_\theta(Y, \text{surrogate}(Y)) \right],
+\]
+where \( \psi_\theta(y, z) = T(y) \cdot \frac{\partial \eta(z, \theta)}{\partial \theta} \) is the canonical exponential family score structure.
+
+We summarize this unifying perspective in Table~\ref{tab:surrogates}.
+
+
+\begin{table}[h]
+\centering
+\caption{Unified decoder gradient: all models use the same estimating function, but differ in their choice of surrogate for the latent variable \( Z \).}
+\label{tab:surrogates}
+\begin{tabular}{lll}
+\toprule
+\textbf{Model} & \textbf{Surrogate for \( Z \)} & \textbf{Decoder Gradient Term} \\
+\midrule
+Autoencoder (AE) & \( Z_i = e_\phi(Y_i) \) (point estimate) & 
+\(
+\psi_\theta(Y_i, e_\phi(Y_i))
+\) \\
+
+MAP & \( Z_i = \arg\max_z \log f_\theta(Y_i \mid z) + \log \pi(z) \) & 
+\(
+\psi_\theta(Y_i, Z_i)
+\) \\
+
+Variational Autoencoder (VAE) & \( Z_i \sim q_\phi(z \mid Y_i) \) & 
+\(
+\mathbb{E}_{Z_i \sim q_\phi}[\psi_\theta(Y_i, Z_i)]
+\) \\
+
+Laplace Approximation & \( Z_i \sim \mathcal{N}(\text{MAP}_i, H^{-1}) \) & 
+\(
+\mathbb{E}_{Z_i \sim \mathcal{N}}[\psi_\theta(Y_i, Z_i)]
+\) \\
+
+Importance-Weighted AE (IWAE) & \( Z_i^{(s)} \sim q_\phi(z \mid Y_i) \), reweighted & 
+\(
+\sum_s w_s \psi_\theta(Y_i, Z_i^{(s)})
+\) \\
+
+Proposed Estimator & \( Z_i = e_\phi(Y_i) \) & 
+\(
+\mathbb{E}_{Y^\star \sim f_\theta}[\psi_\theta(Y^\star, e_\phi(Y^\star))]
+\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+This table makes it clear that the choice of surrogate determines both the statistical properties (e.g., consistency, variance) and computational characteristics of the estimator. Notably, our proposed estimator uniquely incorporates the marginal distribution of \( Y \) into the gradient computation, thereby restoring Fisher consistency while maintaining practical efficiency via amortized inference.
+
+\section{Simulations}
+In all sections, we'll compare to VAE. Additionally, some sections will include model-specific. We'll use MAP and VAE-corrected versions of our estimator for both.
+
+\subsection{GLLVM}
+Here the interest lies in the parameters. We'll do:
+
+GLLVM + MAP (Computed for every observation whenever necessary)
+GLLVM with T(Y) modified to make it approximately linear, together with OLS MAP.
+Pre-train the encoder on many, many datapoints. -> new paper (!). 
+
+\subsection{MNIST, Faces}
+
+\subsection{Single Cell}
+Here the interest lies in the computational aspect: we use an easy to compute surrogate.
+
+\appendix
+\input{appendix_A}
+\input{appendix_B}
+\end{document}

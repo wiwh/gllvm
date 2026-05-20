@@ -1,0 +1,238 @@
+\documentclass[twoside,11pt]{article}
+
+% Any additional packages needed should be included after jmlr2e.
+% Note that jmlr2e.sty includes epsfig, amssymb, natbib and graphicx,
+% and defines many common macros, such as 'proof' and 'example'.
+%
+% It also sets the bibliographystyle to plainnat; for more information on
+% natbib citation styles, see the natbib documentation, a copy of which
+% is archived at http://www.jmlr.org/format/natbib.pdf
+
+\usepackage{jmlr2e}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{bm}
+\usepackage{preamble}
+
+% todo
+ \setlength {\marginparwidth }{2cm} % TODO: REMOVE THAT later
+\usepackage{todonotes}
+\definecolor{lightred}{RGB}{120,60,60}
+\definecolor{darkred}{RGB}{255,0,0}
+\newcommand{\proofread}[1]{{\color{lightred}#1}}
+\newcommand{\rewrite}[2]{{\color{darkred}#1}}
+
+\definecolor{gbcolor}{RGB}{220, 160, 180}
+\newcommand{\gb}[2][]{\todo[color=gbcolor, caption={GB}, #1]{#2}}
+\definecolor{jbcolor}{RGB}{180, 220, 200}
+\newcommand{\jb}[2][]{\todo[color=jbcolor, caption={JB}, #1]{#2}}
+
+
+% Definitions of handy macros can go here
+
+\newcommand{\dataset}{{\cal D}}
+\newcommand{\fracpartial}[2]{\frac{\partial #1}{\partial  #2}}
+
+% Heading arguments are {volume}{year}{pages}{submitted}{published}{author-full-names}
+
+\jmlrheading{1}{2000}{1-48}{4/00}{10/00}{Blanc}
+
+% Short headings should be running head and authors last names
+
+\ShortHeadings{The AI Trick for GDLVMs}{Blanc \& Bodelet}
+\firstpageno{1}
+
+\begin{document}
+
+\title{Math summary for 
+``The AI Trick: a Consistent Estimator for Deep Generalized Latent Variable Models''
+}
+
+\author{\name Guillaume Blanc \email guillaume.e.blanc@gmail.com \\
+  \AND
+  \name Julien Bodelet \email julien.bodelet@gmail.com \\
+  \AND
+  \name Benjamin Poilane \email 
+}
+
+\editor{Someone}
+
+\maketitle
+
+
+\section{Introduction}
+
+The latent variable model is a \textit{generative model} $F_\bt$ for the pair $(\Y, \Z)$:
+%
+\begin{align}
+    \begin{matrix}
+        \hfill\Z &\sim& \pi(\z)\hfill\\
+        \hfill\Y|\Z &\sim& f_\bt(\y|\z)\hfill,
+    \end{matrix}
+    \label{eqn:generative-model-general}
+\end{align}
+%
+where $\Z$ is unobserved.
+% 
+The marginal density $f_\bt(\y)$ of $\Y$ is then obtained by integrating out the latent variable, 
+%
+\begin{equation}
+    f_\bt(\y) = \int_{\mathcal Z} f_\bt(\y|\z)\pi(\z)d\z.
+\end{equation}
+
+
+Given $n$ independent data pairs $\{(\Y_i^0, \Z_i^0)\}_{i=1}^n$ from $F_{\bt_0}$, where $\Z_i^0$ are unobserved, an estimate of $\bt_0$ can, in principle, be obtained by maximizing the sample \textit{marginal log-likelihood}, 
+%
+\begin{equation}
+\frac{1}{n}\sum_{i=1}^n l(\bt; \Y_{i}^0)= \frac{1}{n}\sum_{i=1}^n \log\left(\int_{\mathcal Z}f_\bt(\Y_{i}^0|\z)\pi(\z)d\z\right),
+    \label{eqn:marginal-likelihood}
+\end{equation}
+The issue is that the integral is usually intractable.
+We propose a framework that allows to overcome this issue.
+
+
+
+
+\section{Motivation}
+
+\subsection{The model}
+
+A Generalized Deep Latent Variable Model (GDLVM)\gb[]{This doesn't exist, this is the model we want ( or not? ) to introduce. Perhaps we want to consider this model as a special case of our estimation strategy. We'll see that later.}, further specifies the conditional density $f_\bt(\y|\z)$, in two ways: (i) given the latent variable $\Z$, the elements $Y_{1}, \dots, Y_{p}$ of $\Y$ are independent, that is $Y_{j} \!\! \perp \!\!  Y_{j'}\vert \Z$, $\forall j\neq j'$. This allows to re-write $f_\bt(\y, \z) = \prod_{j=1}^p f_{\bt, j}(y, \z)$, where (ii) the conditional densities $f_{\bt, j}(\y|\z)$ belong to the exponential family of distributions, that is
+
+\begin{equation}
+   f_{\bt, j}(y|\z) = \exp(\{y\gamma - b_j(\gamma))\}/a_j(\phi_j) + c_j(y, \gamma)),
+   \label{eqn:conditional-distribution}
+\end{equation}
+for some known functions $\{a_j, b_j, c_j\}_{j=1}^p$, arbitrary scale parameters $\{\phi_j\}_j^p$ and where $\gamma$ is called the cannonical parameter, which in turn entirely depends on $\bt$ and $\z$. 
+
+\subsection{Profile likelihood}
+
+In order to avoid the computation of the integral, we consider the extended likelihood:
+\begin{equation}
+    l(\bt, \z;\Y)= 
+    \frac{1}{n}\sum_{i=1}^nl(\bt, \z_i;\Y_i)= 
+    \frac{1}{n}\sum_{i=1}^n\log(f_\bt(\Y_{i}^0,\z_{i}))= 
+    \frac{1}{n}\sum_{i=1}^n\log(f_\bt(\Y_{i}^0|\z_{i})\pi(\z_{i})).
+    \label{eqn:extended-likelihood}
+\end{equation} 
+The (marginal) scores are defined by
+$$
+\bm\psi_n(\bt, \z) = \frac{1}{n}\sum_{i=1}^n
+\bm\psi(\bt, \z_i, \y_i)
+= \frac{1}{n}\sum_{i=1}^n \frac{\partial}{\partial\theta} l(\bt, \z_{i}; \Y_{i}). 
+$$
+In the case that  $\z$ is known, $\psi_n$ corresponds to the score of a GLM, and is Fisher consistent conditionally on $\z$:
+$$
+\E[\bm\psi_n(\bt, \z, \y)| \z] = 0,
+$$
+The profile likelihood treats $\z$ as a nuisance parameter. First, one obtains an estimator of $z$ given the parameter 
+$\bt$ by solving the score equation:
+$$
+z_\bt: \bm\phi_n(\bt, \z) = 0.
+$$
+Then one solves the score by plugin the estimator of the nuisance parameter:
+$$
+\hat \bt_{\text{PL}}: \bm\psi_n(\bt, \z_\bt, \y) = 0.
+$$
+When it exists and $\bm\phi_n(\bt, \z) = \frac{1}{n}\sum_{i=1}^n \frac{\partial}{\partial\z} l(\bt, \z_{i}; \Y_{i})$,
+the profile likelihood estimator is equivalent to the Maximum likelihood estimator.
+However, while commonly used for mixed effect models, 
+the profile likelihood fails for most latent variable models, since it is not Fisher consistent, i.e. $\E \bm\psi_n(\theta, \z_\theta, \y)\neq 0$.
+
+\subsection{Partial profiling}
+
+We propose a novel method which is based on partial profiling.
+Consider the score equations for the exponential framework:
+\begin{equation}
+\bm\Psi_n(\bt, \z) = \sum_{j=1}^p\frac{\bm D_j(\z, \bt) (y_{ij}- \mu_j(\bt, \z_i))}{V_j(\z_i, \bt)\phi_j}.
+\label{eqn:Psi}
+\end{equation}
+where, for all $j$, $\mu_j(\bt, \z) = \E[Y_{j}|\z] = g_j^{-1}(\eta_j(\bt, \z))$, $\bm D_j(\bt, \z) = \partial \mu_j(\bt, \z)/\partial \bt$, $V_j(\bt, \z)\phi_j = \text{Var}(Y_{j}|\z)$, $g_j$ is a link function, and $\phi_j$ is an additional variance parameter, and where the conditional expectation and variance are taken with respet to the conditional density $f_{\bt,j}(y|\z)$.
+For simplicity we write
+\begin{equation}
+\bm\Psi_n(\bt, \z) = \frac{1}{n} \sum_{i=1}^n\sum_{j=1}^p \bm W_j(\z_i, \bt) (y_{ij}- \E_\bt(y_{ij}|z_i)).
+\end{equation}
+where we replaced $\mu_j(\bt, \z)$ by $\E_\bt(y|z)$.
+We then do partial profiling, i.e. we replace the $\z_\bt$ only in the weights in the score:
+$$
+\tilde{\bm\Psi}_n(\bt, \z) = \frac{1}{n} \sum_{i=1}^n\sum_{j=1}^p \bm W_j(\z_{\bt,i}, \bt) (y_{ij}- \E_\bt(y_{ij}|\z_i)).
+$$
+In contrast to full profiling, the score function
+$\tilde{\bm\Psi}_n(\bt, \z)$ still depend on $\bm z$ through the expectation.
+However we argue that the dependence vanishes asymptotically.
+Indeed, using the weak law of large number, we have 
+\begin{align*}
+\tilde{\bm\Psi}_n(\bt, \z) 
+&=
+\frac{1}{n} \sum_{i=1}^n\sum_{j=1}^p \bm W_j(\z_{\bt,i}, \bt) y_{ij} - 
+\frac{1}{n} \sum_{i=1}^n\sum_{j=1}^p 
+\bm W_j(\z_{\bt,i}, \bt) \E_\bt(y_{ij}|\z_i),\\    
+&=
+\frac{1}{n} \sum_{i=1}^n\sum_{j=1}^p \bm W_j(\z_{\bt,i}, \bt) y_{ij} - 
+\E_\bt \sum_{j=1}^p \bm W_j(\z_{\bt,i}, \bt) y_{ij} + o_p(1)\\
+&= \tilde{\bm\Psi}_n(\bt) +o_p(1).
+\end{align*}
+Basically, optimizing $\tilde{\bm\Psi}_n(\bt) $ is asymptotically equivalent to optimize $\tilde{\bm\Psi}_n(\bt, \z) $.
+We thus use $\tilde{\bm\Psi}_n(\bt)$ as estimating equation for $\bt$.
+We consider below the example of factor analysis which leads to explicite equations and a very fast algorithm.
+Note that in general $E_\bt$ cannot be computed analytically.
+We consider later the general scenario.
+
+
+\subsection{Example with factor analysis}
+
+Show off. Derive the partial profiled equations for FA.
+Show numerical simulations and computing time.
+
+
+
+\section{Algorithms for general cases}
+
+\subsection{Algorithm with the map}
+
+\subsection{Algorithm with the encoder}
+
+Show algorithms with map and encoders.
+
+
+\section{Asymptotic theory}
+
+\subsection{Parametric case}
+
+For consistency, we will need that the matrix $W_n(\y, \bt) \rightarrow W(\bt)$ and $W(\bt)$ is nonsingular (uniqueness).
+Moreover, we that the derivatives are positive definites.
+Basically, asymptotic theory is a particular case of Quasi-likelihood theory when the variance is misspecified.
+
+
+\subsection{Nonparametric case}
+
+\section{Simulations}
+
+Simulations:
+\begin{itemize}
+    \item GLLVM parametric
+    \item GLLVM nonparametric (Variational autoencoders)
+    \item mixed models?
+    \item Others? Bayesian?
+\end{itemize}
+
+
+\section{Application}
+
+\subsection{Mnist}
+
+\subsection{SNP}
+
+
+
+
+
+
+
+
+
+
+
+\end{document}
+
+

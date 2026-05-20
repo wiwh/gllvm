@@ -1,0 +1,176 @@
+
+
+\paragraph{Computing the Bread}
+A key quantity for the asymptotics of our estimator is the expected Jacobian with respect to $f_{\Y;\,\bto}(\cdot)$, evaluated at $\bto$, whose inverse will also serve as the ``bread'' in the asymptotic variance.
+
+\noindent Recall
+\begin{equation}
+    \psi(\bt;\y_i) 
+    = \mathbb{E}_{f_{\Z|\Y;\,\bt}(\cdot\mid \y_i)}\!\left[ D(\Z,\bt)^\top T(\y_i) \right] 
+    \;-\; \mathbb{E}_{f_{\Y}(\cdot)}\mathbb{E}_{f_{\Z\mid\Y}(\cdot\mid\Y)}\left[ D(\Z,\bt)^\top T(\Y)\right].
+\end{equation}
+%
+We write the Bread as
+%
+\begin{equation}
+    A(\bt_o) = \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[\nabla_\bt \psi(\bt;\Y)\right]_{\bt=\bto}
+    \label{eqn:Jacobian}
+\end{equation}
+%
+Which is equal to:
+
+
+\begin{align}
+    A(\bt_o) &= \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[
+    \nabla_\bt\mathbb{E}_{f_{\Z|\Y;\,\bt}(\cdot\mid \Y)}\!\left[ D(\Z,\bt)^\top T(\Y) \right]
+    - \nabla_\bt\mathbb{E}_{f_{\Y, \Z;\,\bt}(\cdot, \cdot)}\left[ D(\Z,\bt)^\top T(\Y)\right]
+    \right]_{\bt=\bto}\\
+    % separate by linearity
+    &=\mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[
+    \nabla_\bt\mathbb{E}_{f_{\Z|\Y;\,\bt}(\cdot\mid \Y)}\!\left[ D(\Z,\bt)^\top T(\Y) \right]\right]_{\bt=\bto}\\
+    &\qquad - \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[\nabla_\bt\mathbb{E}_{f_{\Y, \Z}(\cdot, \cdot)}\left[ D(\Z,\bt)^\top T(\Y)\right]
+    \right]_{\bt=\bto}
+    \\
+    % push nabla inside + score trick: notice the 2 different scores!
+    &=\mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[
+    \mathbb{E}_{f_{\Z|\Y;\,\bt}(\cdot\mid \Y)}\!\left[\nabla_\bt D(\Z,\bt)^\top T(\Y) + D(\Z,\bt)^\top T(\Y) s(\bt;\Z|\Y)^\top \right]\right]_{\bt=\bto}\\
+    &\qquad - \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[\mathbb{E}_{f_{\Y, \Z;\,\bt}(\cdot, \cdot)}\left[\nabla_\bt D(\Z,\bt)^\top T(\Y) + D(\Z,\bt)^\top T(\Y) s(\bt;\Y,\Z)^\top \right]
+    \right]_{\bt=\bto}
+    \\
+    % apply theta=theta0 to the outer expectation and simplify
+    &=
+    \mathbb{E}_{f_{\Y,\Z;\,\bto}(\cdot, \cdot)}\!\left[\nabla_\bt D(\Z,\bt)^\top T(\Y) + D(\Z,\bt)^\top T(\Y) s(\bt;\Z|\Y)^\top \right]_{\bt=\bto}\\
+    &\qquad -
+    \mathbb{E}_{f_{\Y, \Z;\,\bto}(\cdot, \cdot)}\left[\nabla_\bt D(\Z,\bt)^\top T(\Y) + D(\Z,\bt)^\top T(\Y) s(\bt;\Y,\Z)^\top \right]_{\bt=\bto}
+    \\
+    % linearity + simplify
+    &=
+    \mathbb{E}_{f_{\Y,\Z;\,\bto}(\cdot, \cdot)}\!\left[D(\Z,\bt)^\top T(\Y) s(\bt;\Z|\Y)^\top  - D(\Z,\bt)^\top T(\Y) s(\bt;\Y,\Z)^\top \right]_{\bt=\bto}\\
+    % score equality and apply bto
+    &=
+    - \mathbb{E}_{f_{\Y,\Z;\,\bto}(\cdot, \cdot)}\!\left[D(\Z,\bto)^\top T(\Y) s(\bto;\Y)^\top \right]\\
+\end{align}
+
+In short:
+
+\[
+A(\bt_0)
+= \E_{f_{\Y,\Z;\bt_0}}\!\big[D(\Z,\bt_0)^\top T(\Y)\,\{s(\bt_0;\Z\mid \Y)-s(\bt_0;\Y,\Z)\}^\top\big]
+= -\,\E_{f_{\Y,\Z;\bt_0}}\!\big[D(\Z,\bt_0)^\top T(\Y)\,s(\bt_0;\Y)^\top\big].
+\]
+%
+Equivalent representations:
+\begin{align}
+    % as derived
+    A(\bt_o) &= - \mathbb{E}_{f_{\Y,\Z;\,\bto}(\cdot, \cdot)}\!\left[D(\Z,\bto)^\top T(\Y) s(\bto;\Y)^\top \right]\\
+    A(\bt_o) &= - \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[ \mathbb{E}_{f_{\Z\mid\Y;\,\bto}(\cdot\mid\Y)}\!\left[D(\Z,\bto)^\top T(\Y) s(\bto;\Y)^\top \right]\right]\\
+    A(\bt_o) &= -\,\E_{f_{\Y;\bt_0}(\cdot)}\left[\underbrace{\E_{f_{\Z\mid \Y;\bt_0}(\cdot|\Y)}\big[D(\Z,\bt_0)^\top T(\Y)\big]}_{=:~m_{\bt_0}(\Y)}s(\bt_0;\Y)^\top\right]\\
+    A(\bt_o) &= -\,\E_{f_{\Y;\bt_0}(\cdot)}\left[m_\bto(\Y)s(\bt_0;\Y)^\top\right]\\
+\end{align}
+%
+\noindent Further equivalent forms
+\[
+A(\bto)
+= -\,\E_{f_{\Y;\bt_0}}\!\Big[\E_{f_{\Z\mid \Y;\bt_0}}\!\big[D(\Z,\bt_0)^\top T(\Y)\big]\,s(\bt_0;\Y)^\top\Big]
+= -\,\E\!\big[(s(\bt_0;\Y)+b_{\bt_0}(\Y))\,s(\bt_0;\Y)^\top\big],
+\]
+where \(b_{\bt_0}(\Y)\vcentcolon=\E_{f_{\Z\mid \Y;\bt_0}}[D(\Z,\bt_0)^\top\mu_{\bt_0}(\Z)]\) and
+\(m_{\bt_0}(\Y)=s(\bt_0;\Y)+b_{\bt_0}(\Y)\). Hence
+\[
+A(\bt_0) = -\,\E\!\big[s(\bt_0;\Y)s(\bt_0;\Y)^\top\big]\;-\;\E\!\big[b_{\bt_0}(\Y)\,s(\bt_0;\Y)^\top\big]
+= -\,I(\bt_0)\;-\;\E\!\big[b_{\bt_0}(\Y)\,s(\bt_0;\Y)^\top\big].
+\]
+%
+And in particular:
+\begin{equation}
+    A(\bto) = -\,\E_{f_{\Y;\bt_0}(\cdot)}\left[m_\bto(\Y)(m_\bto(\Y) - b_\bto(\Y))^\top\right]
+\end{equation}
+Compare this with the Second Bartlett identity:
+%
+\begin{align}
+    \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}[\nabla_\bt s(\bt;\Y)] &= - \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}[s(\bto;\Y)s(\bto;\Y)^\top]\\
+    &= - \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}[(m_\bto(\Y) - b_\bto(\Y))s(\bto;\Y)^\top]\\
+    &= - \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}[(m_\bto(\Y) - b_\bto(\Y))(m_\bto(\Y) - b_\bto(\Y))^\top]
+\end{align}
+
+
+\textbf{Relations (all equivalent):}
+\begin{align*}
+A(\bt_0)
+&= -\,\E\!\big[m_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big]
+= -\,\E\!\big[(s(\bt_0;Y)+b_{\bt_0}(Y))\,s(\bt_0;Y)^\top\big]\\
+&= -\,\underbrace{\E\!\big[s(\bt_0;Y)s(\bt_0;Y)^\top\big]}_{I(\bt_0)}
+\;-\;\E\!\big[b_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big]\\
+&= \underbrace{\E\!\big[\nabla_\bt s(\bt_0;Y)\big]}_{-\,I(\bt_0)}
+\;-\;\E\!\big[b_{\bt_0}(Y)\,s(\bt_0;Y)^\top\big].
+\end{align*}
+By contrast, Bartlett’s identity is
+\[
+\E\!\big[\nabla_\bt s(\bt_0;Y)\big]
+= -\,\E\!\big[s(\bt_0;Y)s(\bt_0;Y)^\top\big]
+= -\,\E\!\big[(m_{\bt_0}(Y)-b_{\bt_0}(Y))(m_{\bt_0}(Y)-b_{\bt_0}(Y))^\top\big].
+\]
+Also recall that:
+%
+\begin{equation}
+    \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[b_\bto(\Y)\right] = \mathbb{E}_{f_{\Y;\,\bto}(\cdot)}\left[m_\bto(\Y)\right]
+\end{equation}
+
+
+
+
+
+
+
+
+
+
+\subsection{Identifiability}
+
+\begin{theorem}[Identifiability]
+Suppose the function $\bt \mapsto \mathbb{E}_{\Y \sim f_\bt}[\psi_\bt(\Y, e(\Y, \bt))]$ is continuous and satisfies
+\[
+\mathbb{E}_{\Y \sim f_{\bt_0}}[\psi_{\bt_0}(\Y, e(\Y, \bt_0))] = 0,
+\]
+and that for all $\bt \neq \bt_0$,
+\[
+\mathbb{E}_{\Y \sim f_{\bt}}[\psi_\bt(\Y, e(\Y, \bt))] \neq 0.
+\]
+Then the parameter $\bt_0$ is identified by the moment condition.
+\end{theorem}
+
+\subsection{Regularity of the Surrogate}
+
+\begin{lemma}[Implicit Regularity]
+Suppose that for each $\y \in \mathcal{Y}$, the function $\phi_\bt(\y, \z)$ is continuously differentiable in $(\z, \bt)$, and that the Jacobian $\partial_\z \phi_\bt(\y, \z)$ is invertible in a neighborhood of the root $z = e(\y, \bt)$. Then, by the implicit function theorem, there exists a unique, continuously differentiable function $e(\y, \bt)$ such that
+\[
+\phi_\bt(\y, e(\y, \bt)) = 0.
+\]
+\end{lemma}
+
+\subsection{Consistency}
+
+\begin{theorem}[Consistency]
+Let $\hat\bt_n$ be defined as the solution to the estimating equation~(2). Suppose:
+\begin{enumerate}
+    \item The parameter space $\bm{\Theta} \subset \mathbb{R}^r$ is compact;
+    \item The function $\psi_\bt(\y, \z)$ is continuous in $\bt$ for almost every $\y$, and measurable in $\y$;
+    \item The surrogate function $e(\y, \bt)$ is continuous in $\bt$ for almost every $\y$, and measurable in $\y$;
+    \item There exists an integrable function $M(\Y)$ such that $\|\psi_\bt(\Y, e(\Y, \bt))\| \leq M(\Y)$ for all $\bt \in \bm{\Theta}$;
+    \item The moment function $\bt \mapsto \mathbb{E}[\psi_\bt(\Y, e(\Y, \bt))]$ has a unique zero at $\bt = \bt_0$.
+\end{enumerate}
+Then $\hat\bt_n \xrightarrow{p} \bt_0$.
+\end{theorem}
+
+\subsection{Asymptotic Normality}
+
+\begin{theorem}[Asymptotic Normality]
+Under the conditions of Theorem~\ref{appendix:theory-consistency} and assuming that $\bt \mapsto \psi_\bt(\Y, e(\Y, \bt))$ is differentiable with derivative matrix $G = \mathbb{E}[\nabla_\bt \psi_\bt(\Y, e(\Y, \bt_0))]$, and that the variance matrix
+\[
+\Sigma = \mathbb{E}\left[\psi_{\bt_0}(\Y, e(\Y, \bt_0)) \psi_{\bt_0}(\Y, e(\Y, \bt_0))^\top\right]
+\]
+is finite and positive definite, we have
+\[
+\sqrt{n}(\hat\bt_n - \bt_0) \xrightarrow{d} \mathcal{N}(0, G^{-1} \Sigma G^{-\top}).
+\]
+\end{theorem}

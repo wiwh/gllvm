@@ -1,0 +1,119 @@
+\section{Mathematical Appendix}
+\label{appendix:theory}
+
+We collect here the formal conditions under which our estimator is consistent and asymptotically normal. These results are adaptations of classical results from the theory of just-identified generalized method of moments (GMM) estimators, tailored to the structure of our estimating equations.
+
+\subsection{From Marginal Log-Likelihood to MLE Estimating Equations}
+\label{apx:mle-estimating-equations}
+To derive the estimating equations from the marginal log-likelihood, we proceed as follows:
+
+\begin{enumerate}
+    \item \textbf{Start with the marginal log-likelihood:}
+    \[
+    \ell(\bt; \y_i) = \log \left( \int_{\mathcal Z} f_\bt(\y_i, \z)\,d\z \right),
+    \]
+    where \( f_\bt(\y_i, \z) = f_\bt(\y_i \mid \z) f(\z) \).
+
+    \item \textbf{Differentiate under the integral sign:}  
+    The derivative of the log-likelihood w.r.t. \( \bt \) is
+    \[
+    \nabla_\bt \ell(\bt; \y_i) = \frac{ \int_{\mathcal Z} \nabla_\bt f_\bt(\y_i, \z)\, d\z }{ \int_{\mathcal Z} f_\bt(\y_i, \z)\, d\z }.
+    \]
+
+    \item \textbf{Rewrite the numerator using the score function:}
+    \[
+    \nabla_\bt f_\bt(\y_i, \z) = f_\bt(\y_i, \z) \nabla_\bt \log f_\bt(\y_i, \z).
+    \]
+    Substituting gives:
+    \[
+    \nabla_\bt \ell(\bt; \y_i)
+    = \frac{ \int f_\bt(\y_i, \z) \nabla_\bt \log f_\bt(\y_i, \z)\, d\z }{ f_\bt(\y_i) }
+    = \int \nabla_\bt \log f_\bt(\y_i, \z) \cdot \frac{f_\bt(\y_i, \z)}{f_\bt(\y_i)}\, d\z.
+    \]
+
+    \item \textbf{Recognize the posterior:}  
+    The ratio \( \frac{f_\bt(\y_i, \z)}{f_\bt(\y_i)} \) is exactly the posterior density:
+    \[
+    f_\bt(\z \mid \y_i) := \frac{f_\bt(\y_i, \z)}{f_\bt(\y_i)}.
+    \]
+
+    \item \textbf{Final expression:}
+    \[
+    \nabla_\bt \ell(\bt; \y_i)
+    = \mathbb{E}_{\Z_i \sim f_\bt(\z \mid \y_i)} \left[ \nabla_\bt \log f_\bt(\y_i, \Z_i) \right].
+    \]
+
+    \item \textbf{Stacking over all \( n \) observations:}
+    \[
+    \frac{1}{n} \sum_{i=1}^n \mathbb{E}_{\Z_i \sim f_\bt(\z \mid \y_i)} \left[ \nabla_\bt \log f_\bt(\y_i, \Z_i) \right] = 0,
+    \]
+    which gives the MLE estimating equations as in Equation~\eqref{eqn:MLE-estimating-equations}.
+\end{enumerate}
+
+
+
+
+
+\subsection{Derivation of the Jacobian}
+\label{math:jacobian}
+The Jacobian takes the form,
+%
+\begin{align}
+A_{q,c}(\bt_0)\;&=\;-\nabla_\bt \Psi(\bt)\big|_{\bt=\bt_0}\\
+&=-\E_{\bt_0}\left[\nabla_\bt \psi_{q,c}(\bt;\Y)\right]_{\bt=\bto} + \E_{\bt_0}\left[\nabla_\bt \psi_{q,c}(\bt;\Y)\right]_{\bt=\bto} \\
+&\quad\, - \E_{\bt}\left[\psi_{q,c}(\bt;\Y)s(\bt;\Y)^\top\right]_{\bt=\bto}\\
+&=-\E_{\bt_0}\left[\psi_{q,c}(\bt_0;\Y)\,s(\bt_0;\Y)^\top\right]\\
+&=-\E_{\bt_0}\left[\big(m_q(\Y;\bt_0)-c\,b_q(\Y;\bt_0)\big)\,s(\bt_0;\Y)^\top\right],
+\end{align}
+%
+Where we used the fact, that, for any measurable function $g(\bt,\Y)$,
+\[
+\E_{f_{\Y;\,\bt}}[g(\bt,\Y)] \;=\; \int g(\bt,y)\, f_{\Y;\,\bt}(y)\,dy.
+\]
+Differentiating w.r.t.\ $\bt$ under the integral sign gives
+\begin{align}
+\nabla_\bt \E_{f_{\Y;\,\bt}}[g(\bt,\Y)]
+&= \int \nabla_\bt g(\bt,y)\, f_{\Y;\,\bt}(y)\,dy \;+\; \int g(\bt,y)\,\nabla_\bt f_{\Y;\,\bt}(y)\,dy\\
+&= \E_{f_{\Y;\,\bt}}[\nabla_\bt g(\bt,\Y)] \;+\; \E_{f_{\Y;\,\bt}}\!\Big[g(\bt,\Y)\,\frac{\nabla_\bt f_{\Y;\,\bt}(\Y)}{f_{\Y;\,\bt}(\Y)}\Big]\\
+&= \E_{f_{\Y;\,\bt}}[\nabla_\bt g(\bt,\Y)] \;+\; \E_{f_{\Y;\,\bt}}[g(\bt,\Y)\,s(\bt;\Y)^\top],
+\end{align}
+where $s(\bt;\Y)=\nabla_\bt \log f_{\Y;\,\bt}(\Y)$ is the score function.
+
+
+\section{OTHER STUFF}
+
+\subsection{MLE compatibility intuition}
+
+A useful compatibility check comes from the exact-score case. Under the true model, the
+likelihood score equation implies that at $\bt=\bt_0$ the two posterior expectations in
+\eqref{eq:score_two_terms} have the same population target:
+\begin{equation}
+\mathbb E_{f_{\Y;\bt_0}}
+\!\left[
+\mathbb{E}_{f_{\Z\mid\Y;\bt_0}(\cdot\mid \Y)}\!\big[D(\Z;\bt_0)^\top T(\Y)\big]
+\right]
+=
+\mathbb E_{f_{\Y;\bt_0}}
+\!\left[
+\mathbb{E}_{f_{\Z\mid\Y;\bt_0}(\cdot\mid \Y)}\!\big[D(\Z;\bt_0)^\top \mu(\Z;\bt_0)\big]
+\right].
+\label{eq:mle_pop_matching_bt0}
+\end{equation}
+If $q_{\Z\mid\Y}=f_{\Z\mid\Y;\bt_0}$, then
+$\psi_q(\bt_0;\Y)=\mathbb{E}_{f_{\Z\mid\Y;\bt_0}(\cdot\mid \Y)}[D(\Z;\bt_0)^\top T(\Y)]$, so
+the model-based centering term in \eqref{eq:zq_matching} evaluated at $\bt_0$ coincides with
+the population target appearing on the left-hand side of \eqref{eq:mle_pop_matching_bt0}, and
+hence also with the population target of the MLE centering term on the right-hand side.
+
+For an arbitrary surrogate $q_{\Z\mid\Y}$, we do not expect such an identity to hold pointwise.
+Instead, the centering in \eqref{eq:Psi_nq} enforces the population condition
+$\Psi_q(\bt_0)=0$ by construction, which is the basis for decoder consistency under surrogate
+misspecification.
+
+
+
+
+
+
+
+
