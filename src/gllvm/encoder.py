@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from gllvm.glm_fit import initial_gaussian_fit, poisson_newton_batch
 
 
 class Encoder(nn.Module):
@@ -167,6 +168,205 @@ class EncoderMAPSupervised(nn.Module):
         loss += loss_regul
 
         return loss, -loss.item()
+
+
+class MapEncoderGaussianLog1p(nn.Module):
+    """
+    Parameter-free analytical MAP encoder.
+
+    Assumes a Gaussian proxy model in log1p-space:
+
+        log1p(y) | z  ~  N(W z + b,  sigma^2 I)
+        z             ~  N(0, I)
+
+    The MAP is the closed-form ridge solution:
+
+        z_MAP(y; theta) = (sigma^2 I + W^T W)^{-1} W^T (log1p(y) - b)
+
+    where W = gllvm.wz  (p x q)  and  b = gllvm.bias  (p,).
+
+    Key properties
+    --------------
+    * No learnable parameters — nothing to train, no warmup.
+    * Depends *explicitly* on the current decoder theta = (W, b): the MAP
+      improves automatically as the decoder is updated.
+    * The q x q solve costs O(q^3), negligible for q << p.
+    * Fully differentiable: gradient flows through W and b if called
+      outside torch.no_grad().
+    * sigma2 acts as a ridge penalty / prior precision ratio; sigma2=1
+      corresponds to the standard N(0,I) prior matching the GLLVM's latent prior.
+    """
+
+    def __init__(self, gllvm, sigma2: float = 1.0):
+        super().__init__()
+        self.gllvm = gllvm   # live reference — always uses current W, b
+        self.sigma2 = sigma2
+
+    def forward(self, y):
+        W = self.gllvm.wz           # (p, q)
+        b = (self.gllvm.bias
+             if self.gllvm.bias is not None
+             else torch.zeros(W.shape[0], device=W.device, dtype=W.dtype))
+
+        t_y = torch.log1p(y.float())            # (n, p)
+        rhs = (t_y - b.unsqueeze(0)) @ W        # (n, q)  =  (log1p(y)-b)^T W
+
+        A = (self.sigma2 * torch.eye(W.shape[1], device=W.device, dtype=W.dtype)
+             + W.T @ W)                          # (q, q)
+
+        # solve A z^T = rhs^T  ->  z_MAP = (A^{-1} rhs^T)^T
+        z_map = torch.linalg.solve(A, rhs.T).T  # (n, q)
+        return z_map
+
+    def sample(self, y):
+        """Drop-in for Encoder.sample() — deterministic delta-mass surrogate."""
+        z = self.forward(y)
+        return z, z, torch.full_like(z, float("-inf"))
+
+    def loss(self, y, gllvm=None, **kwargs):
+        """No parameters to optimise — return a zero loss."""
+        dummy = next(self.gllvm.parameters())
+        return torch.zeros(1, device=dummy.device, requires_grad=True), 0.0
+
+
+class MapEncoderPoissonNewton(nn.Module):
+    """
+    Parameter-free exact Poisson MAP encoder via batched Newton GLM.
+
+    Solves, for each observation y_i:
+
+        z* = argmax_z { sum_j [y_ij * eta_j(z) - exp(eta_j(z))] - 0.5 ||z||^2 }
+
+    where eta_j(z) = w_j^T z + b_j, using the fast vectorised Newton solver
+    from ``glm_fit.py`` with a Gaussian log1p warm-start.
+
+    Parameters
+    ----------
+    gllvm       : GLLVM  — live reference; always uses current W, b.
+    lam         : float  — prior precision (matches N(0,I) at lam=1).
+    max_iter    : int    — Newton iterations.
+    max_halvings: int    — step-halving budget per iteration.
+    tol         : float  — convergence tolerance on ||Δz||.
+    """
+
+    def __init__(self, gllvm, lam: float = 1.0, max_iter: int = 30,
+                 max_halvings: int = 10, tol: float = 1e-6):
+        super().__init__()
+        self.gllvm        = gllvm
+        self.lam          = lam
+        self.max_iter     = max_iter
+        self.max_halvings = max_halvings
+        self.tol          = tol
+
+    def forward(self, y):
+        W = self.gllvm.wz.detach()          # (p, q)
+        b = (self.gllvm.bias.detach()
+             if self.gllvm.bias is not None
+             else torch.zeros(W.shape[0], device=W.device, dtype=W.dtype))  # (p,)
+
+        Y_t    = y.float().T.contiguous()              # (p, batch)
+        offset = b.unsqueeze(1).expand_as(Y_t)         # (p, batch)
+
+        with torch.no_grad():
+            B0 = initial_gaussian_fit(W, Y_t, offset=offset)          # (q, batch)
+            B_hat, _ = poisson_newton_batch(
+                X=W, Y=Y_t, B0=B0, offset=offset,
+                lam=self.lam, max_iter=self.max_iter,
+                max_halvings=self.max_halvings, tol=self.tol, verbose=False,
+            )
+        return B_hat.T.contiguous()   # (batch, q)
+
+    def sample(self, y):
+        """Drop-in for Encoder.sample() — deterministic delta-mass surrogate."""
+        z = self.forward(y)
+        return z, z, torch.full_like(z, float("-inf"))
+
+    def loss(self, y, gllvm=None, **kwargs):
+        """No parameters to optimise — return a zero loss."""
+        dummy = next(self.gllvm.parameters())
+        return torch.zeros(1, device=dummy.device, requires_grad=True), 0.0
+
+
+class GaussianPosteriorEncoderLog1p(nn.Module):
+    """
+    Parameter-free encoder that draws exact samples from the Gaussian posterior.
+
+    Proxy model in log1p-space (misspecified but tractable):
+
+        log1p(y) | z  ~  N(W z + b,  sigma^2 I)
+        z             ~  N(0, I)
+
+    Exact posterior:
+
+        q(z | y)  =  N(mu, Sigma)
+        Sigma     =  sigma^2 * (W^T W + sigma^2 I)^{-1}       (q x q)
+        mu        =  Sigma / sigma^2 * W^T (log1p(y) - b)
+                  =  (W^T W + sigma^2 I)^{-1} W^T (log1p(y) - b)
+
+    The mean mu is identical to the MAP solution; the novelty is drawing
+    samples from the full posterior, not a point-mass.  This is equivalent
+    to non-amortised variational inference under the misspecified Gaussian
+    model — but because the ZQE estimating equation satisfies the score-function
+    identity, the encoder misspecification does *not* bias the decoder updates.
+
+    The posterior covariance is shared across observations (it only depends on
+    W, not on y), so we compute its Cholesky factor once per call.
+    """
+
+    def __init__(self, gllvm, sigma2: float = 1.0):
+        super().__init__()
+        self.gllvm = gllvm
+        self.sigma2 = sigma2
+
+    def _posterior_params(self, y):
+        """Return (mu, L) where L is the lower Cholesky of Sigma."""
+        W = self.gllvm.wz           # (p, q)
+        b = (self.gllvm.bias
+             if self.gllvm.bias is not None
+             else torch.zeros(W.shape[0], device=W.device, dtype=W.dtype))
+
+        t_y = torch.log1p(y.float())            # (n, p)
+        rhs = (t_y - b.unsqueeze(0)) @ W        # (n, q)
+
+        A = (self.sigma2 * torch.eye(W.shape[1], device=W.device, dtype=W.dtype)
+             + W.T @ W)                          # (q, q)
+
+        # mu = A^{-1} rhs^T  transposed back to (n, q)
+        mu = torch.linalg.solve(A, rhs.T).T      # (n, q)
+
+        # Sigma = sigma^2 * A^{-1}  — Cholesky of Sigma
+        # L L^T = sigma^2 A^{-1}   =>  L = sqrt(sigma^2) * chol(A^{-1})
+        #                              = sqrt(sigma^2) * solve(chol(A), I)^T
+        L_A = torch.linalg.cholesky(A)           # (q, q), lower
+        I_q = torch.eye(W.shape[1], device=W.device, dtype=W.dtype)
+        # L_A L_A^T = A  =>  A^{-1} = (L_A^{-1})^T L_A^{-1}
+        # Cholesky of Sigma = sqrt(sigma2) * L_A^{-T}  (upper-triangular of A^{-1})
+        L_Ainv = torch.linalg.solve_triangular(L_A, I_q, upper=False)  # (q, q)
+        L_Sigma = (self.sigma2 ** 0.5) * L_Ainv.T   # (q, q), upper; use as scale
+
+        return mu, L_Sigma
+
+    def forward(self, y):
+        """Return a sample z ~ q(z|y) via the reparameterisation trick."""
+        mu, L_Sigma = self._posterior_params(y)
+        eps = torch.randn_like(mu)               # (n, q)
+        # L_Sigma is upper-triangular: z = mu + eps @ L_Sigma  (each row scaled)
+        z = mu + eps @ L_Sigma                   # (n, q)
+        return z
+
+    def sample(self, y):
+        """Drop-in for Encoder.sample() — returns (z_sample, mu, log_std)."""
+        mu, L_Sigma = self._posterior_params(y)
+        eps = torch.randn_like(mu)
+        z = mu + eps @ L_Sigma
+        # log_std: diagonal of L_Sigma (approximate scalar summary, not used by ZQE)
+        log_std = torch.log(L_Sigma.diag()).expand_as(mu)
+        return z, mu, log_std
+
+    def loss(self, y, gllvm=None, **kwargs):
+        """No parameters to optimise — return a zero loss."""
+        dummy = next(self.gllvm.parameters())
+        return torch.zeros(1, device=dummy.device, requires_grad=True), 0.0
 
 
 class EncoderGaussianApprox(nn.Module):

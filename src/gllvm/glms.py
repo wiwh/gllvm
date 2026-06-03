@@ -21,6 +21,11 @@ __all__ = [
     "GLMMixin",
     "GaussianGLM",
     "PoissonGLM",
+    "PoissonLog1pGLM",
+    "PoissonMixedTGLM",
+    "PoissonSqrtGLM",
+    "PoissonLog1pSqrtGLM",
+    "PoissonMultiTGLM",
     "GammaGLM",
     "NegativeBinomialGLM",
     "BinomialGLM",
@@ -107,7 +112,7 @@ class PoissonGLM(D.Poisson, GLMMixin):
     def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
         self.linpar = linpar
         self.scale = torch.tensor(1.0, device=linpar.device)
-        rate = torch.exp(linpar)
+        rate = torch.exp(torch.clamp(linpar, max=10.0))  # clamp: exp(10)≈22k, avoids inf
         super().__init__(rate=rate)
 
     def eta(self):
@@ -129,6 +134,113 @@ class PoissonGLM(D.Poisson, GLMMixin):
         return f"PoissonGLM(linpar={self.linpar})"
 
 
+class PoissonLog1pGLM(PoissonGLM):
+    """
+    Poisson GLM with log link, but using T(y) = log(1+y) as the sufficient
+    statistic in the ZQE estimating equation instead of the canonical T(y) = y.
+
+    This is a valid (non-canonical) choice: the ZQE centring
+
+        E[T(y) * eta(z_q(y))] - E_model[T(yq) * eta(z_q(yq))]
+
+    vanishes at the truth for any measurable T.  With T(y) = log(1+y) the
+    synthetic term is bounded by log(1 + exp(clamp)) * ||linpar||, so
+    gradients stay finite even when the decoder has not yet converged.
+
+    Sampling, log_prob, and eta are unchanged (identical to PoissonGLM).
+    Only zq_log is affected via the overridden T().
+    """
+
+    def T(self, y):
+        return torch.log1p(y.float())
+
+    def __repr__(self):
+        return f"PoissonLog1pGLM(linpar={self.linpar})"
+
+
+class PoissonMixedTGLM(PoissonGLM):
+    """
+    Poisson GLM using T(y) = y + log(1+y) in the ZQE estimating equation.
+
+    This is the equal-weight sum of the canonical (T=y) and the stable
+    (T=log1p) estimating equations:
+
+        [E(y·η) - E_θ(yq·η)]  +  [E(log1p(y)·η) - E_θ(log1p(yq)·η)]  = 0
+
+    Because η does not depend on T, summing the two equations is equivalent
+    to a single equation with T_mix(y) = y + log(1+y).  This recovers the
+    gradient signal of the canonical score (y·η has the right Fisher
+    efficiency) while log1p(y) regularises the centring term against
+    large-count explosions.
+
+    Sampling, log_prob, and eta are unchanged.
+    """
+
+    def T(self, y):
+        y = y.float()
+        return y + torch.log1p(y)
+
+    def __repr__(self):
+        return f"PoissonMixedTGLM(linpar={self.linpar})"
+
+
+class PoissonSqrtGLM(PoissonGLM):
+    """
+    Poisson GLM using T(y) = sqrt(y) in the ZQE estimating equation.
+
+    sqrt is the variance-stabilising transformation for Poisson (delta method:
+    Var[sqrt(Y)] ≈ 1/4).  It compresses large counts more aggressively than
+    log1p, giving a flatter signal across the dynamic range of scRNA-seq data.
+    Unlike T=y it never causes gradient explosion at random decoder init.
+    """
+
+    def T(self, y):
+        return torch.sqrt(y.float().clamp_min(0.0))
+
+    def __repr__(self):
+        return f"PoissonSqrtGLM(linpar={self.linpar})"
+
+
+class PoissonLog1pSqrtGLM(PoissonGLM):
+    """
+    Poisson GLM using T(y) = (log1p(y) + sqrt(y)) / 2.
+
+    Equal-weight average of the two best-performing transforms:
+    log1p for low-count sensitivity and sqrt for variance stabilisation.
+    """
+
+    def T(self, y):
+        y = y.float().clamp_min(0.0)
+        return (torch.log1p(y) + torch.sqrt(y)) / 2.0
+
+    def __repr__(self):
+        return f"PoissonLog1pSqrtGLM(linpar={self.linpar})"
+
+
+class PoissonMultiTGLM(PoissonGLM):
+    """
+    Poisson GLM using T(y) = (1/3)*[log1p(y) + sqrt(y) + y/(1+y)] as a
+    uniform-weight mixture of three bounded/stable transformations.
+
+    Motivation: each transformation captures different aspects of the count
+    distribution:
+      - log1p(y): emphasises low counts, log-compresses high counts
+      - sqrt(y):  variance-stabilising, intermediate compression
+      - y/(1+y):  bounded in [0,1), de-emphasises outlier counts
+
+    All three are bounded/slow-growing so the centring term stays finite.
+    Equal weights keep the mixture scale neutral.  The resulting estimating
+    equation is the average of three individually valid ZQE equations.
+    """
+
+    def T(self, y):
+        y = y.float().clamp_min(0.0)
+        return (torch.log1p(y) + torch.sqrt(y) + y / (1.0 + y)) / 3.0
+
+    def __repr__(self):
+        return f"PoissonMultiTGLM(linpar={self.linpar})"
+
+
 # ============================================================
 # Gamma GLM
 # ============================================================
@@ -145,7 +257,7 @@ class GammaGLM(D.Gamma, GLMMixin):
         self.linpar = linpar
         self.scale = torch.as_tensor(scale, device=linpar.device)
 
-        mu = torch.exp(linpar)
+        mu = torch.exp(torch.clamp(linpar, max=10.0))
         concentration = 1.0 / self.scale  # shape = alpha
         rate = concentration / mu  # beta = alpha / mu
 

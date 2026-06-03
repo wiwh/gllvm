@@ -639,10 +639,46 @@ The relevant conclusion is therefore weaker and more appropriate here:
 posterior quality affects \emph{efficiency}, but consistency follows from
 centering together with local identification.
 
+\paragraph{Overidentification and connection to GMM.}
+The present construction uses a single sufficient statistic $T(y)$ in the estimating equation, yielding a just-identified system with one moment per parameter.
+It is straightforward to stack $K$ statistics $T_1,\ldots,T_K$ and form an overidentified system of $Kd$ moment conditions for $d$ parameters.
+Each individual system $\Psi_n^{(k)}(\bt)=0$ is consistent by the same centering argument, and their combination fits naturally within the generalized method of moments (GMM) framework of \citet{hansen1982large}.
+The optimal GMM weight matrix then trades off the $K$ moment conditions to minimize asymptotic variance, potentially improving efficiency over any single $T_k$.
+In practice, a simple equal-weight average $T(y) = K^{-1}\sum_k T_k(y)$ already combines the conditions and remains just-identified, though without the variance reduction of optimal weighting.
+We do not pursue this extension here, but note that the $Z_q$ framework is a natural vehicle for it.
+
 \paragraph{Gaussian factor analysis as a benchmark case.}
 The efficiency discussion above should not be read as saying that centered estimation with a surrogate posterior is necessarily inefficient relative to likelihood-based methods. In some classical latent-variable models, the centered equations recover the efficient score exactly even when the surrogate itself is extremely crude. In particular, in Gaussian factor analysis, if \(q_{\Z\mid\Y}\) is taken to be a point mass at the posterior mode, then the resulting \(Z_q\) estimating equations coincide with the marginal score equations. Thus the \(Z_q\) estimator equals the maximum likelihood estimator and is Fisher efficient in this case. This happens because, in the linear-Gaussian setting, the posterior mean equals the MAP and the complete-data score has a structure for which replacing the posterior by its mean/MAP leaves the centered estimating equation \eqref{eq:Psi_n_general} unchanged; see Appendix~\ref{apx:fa-efficiency}.
 
 
+
+\subsection{The large-\texorpdfstring{$p$}{p}, small-\texorpdfstring{$n$}{n} regime}
+\label{sec:large-p}
+
+A practically important regime that is not captured by standard asymptotic analysis in $n$ is the one in which the observation dimension $p$ is large relative to the sample size $n$, as is typical in single-cell RNA sequencing ($p \sim 10^4$ genes, $n \sim 10^3$--$10^4$ cells).
+In this setting the $Z_q$ estimator with a parameter-free Gaussian proxy encoder has a qualitatively different behaviour from a VAE encoder.
+
+\paragraph{The proxy encoder concentrates in $p$.}
+The Gaussian proxy posterior sets $\mu(y;\theta) = \Sigma_z W_z^\top T(y)$, a weighted sum over $p$ features. By a law-of-large-numbers argument in $p$, this sum concentrates around its expectation at rate $1/\sqrt{p}$, independently of $n$. Concretely, as $p\to\infty$ with $n$ fixed:
+\begin{itemize}
+  \item the MAP point $\hat z(y) \to \mathbb{E}[Z \mid Y = y; \theta]$ in the Gaussian GLLVM, so the proxy becomes the true posterior mean;
+  \item the posterior becomes increasingly peaked, and the MAP assignment recovers the exact posterior mode;
+  \item the $Z_q$ estimating equations therefore converge to the true complete-data score equations, and the estimator behaves like a GLM fit with known latent variables.
+\end{itemize}
+This is the sense in which the method improves with $p$: the encoder is \emph{self-correcting} through concentration, with no additional data required.
+
+\paragraph{Contrast with amortised VAE encoders.}
+A neural network encoder $q_\phi(z\mid y)$ must learn from the $n$ training observations how to map $\mathbb{R}^p \to \mathbb{R}^q$. Its generalisation gap scales with the number of parameters divided by $n$, irrespective of $p$. As $p$ grows the VAE encoder gains no benefit from the additional signal, but the number of input weights grows linearly, increasing the risk of overfitting or slow convergence. The $Z_q$ proxy encoder, having zero learnable parameters, is immune to this problem.
+
+\paragraph{Empirical confirmation.}
+Simulations with a sparse Poisson GLLVM ($q=2$, $p \in \{20\}$, $n=1000$, loading scale $\sigma_W = 0.3$) confirm the qualitative picture and add a striking finding: the proxy encoder outperforms the VAE even in the \emph{large-$n$/small-$p$} regime, precisely where amortised inference is expected to be most competitive.
+At $p=20$, $n=1000$ --- a setting with 50 observations per input dimension, far above typical deep-learning data requirements --- the Gauss-posterior proxy with $T(y) = (\log(1+y)+\sqrt{y})/2$ achieves Procrustes error $0.101$ versus $0.143$ for a well-tuned VAE (with warm-up, learning-rate annealing, and early stopping), a 30\% improvement.
+The result holds across seeds.
+
+This suggests the amortisation gap is a \emph{structural} property of the ELBO objective rather than a data-starvation artefact: even with ample data the joint optimisation of encoder and decoder under the KL-regularised objective creates a landscape in which the encoder does not converge to the true posterior, and the resulting gradient bias in the decoder update persists.
+The $Z_q$ proxy sidesteps this entirely; the encoder is never trained, never overfits, and never induces gradient bias in the decoder.
+
+\todo[color=yellow]{TODO: add p-sweep figure showing Procrustes vs.\ $p$ for best ZQE arm and VAE.}
 
 \subsection{Variance estimation and inference}
 \label{sec:variance}

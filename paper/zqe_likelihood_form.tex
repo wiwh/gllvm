@@ -1,0 +1,91 @@
+% ZQE objective in likelihood form
+% Notation follows main.tex: \bt = decoder params, q_{\Z\mid\Y;\bt} = surrogate,
+% f_{\Y\mid\Z;\bt} = decoder density, f_{\Y;\bt} = marginal.
+
+\subsection*{$Z_q$ objective in log-likelihood form}
+
+The $Z_q$ estimating equations $\Psi_n(\bt) = 0$ are the first-order conditions of the
+scalar objective
+%
+\begin{equation}
+  \mathcal{L}_{\mathrm{ZQE}}(\bt)
+  \;:=\;
+  \underbrace{
+    \frac{1}{n}\sum_{i=1}^n
+    \mathbb{E}_{q_{\Z\mid\Y;\bt}(\cdot\mid\y_i)}
+    \!\bigl[\log f_{\Y\mid\Z;\bt}(\y_i\mid\Z)\bigr]
+  }_{\text{surrogate expected log-lik on real data}}
+  \;-\;
+  \underbrace{
+    \mathbb{E}_{f_{\Y;\bt}(\y)}
+    \mathbb{E}_{q_{\Z\mid\Y;\bt}(\cdot\mid\y)}
+    \!\bigl[\log f_{\Y\mid\Z;\bt}(\y\mid\Z)\bigr]
+  }_{\text{same quantity, centred under model}}.
+  \label{eq:L_ZQE}
+\end{equation}
+%
+The first term is the surrogate-posterior expected conditional log-likelihood evaluated
+on the observed data; the second term is its expectation under the generative model
+$f_{\Y;\bt}$, and plays the role of a \emph{self-centering} baseline.
+
+\paragraph{Why this is a valid scalar objective.}
+For exponential-family decoders, differentiating $\mathcal{L}_{\mathrm{ZQE}}$ with
+respect to $\bt$ (treating the dependence of $q_{\Z\mid\Y;\bt}$ on $\bt$ as fixed,
+i.e.\ holding the surrogate at its current value) recovers exactly the $Z_q$ estimating
+map $\Psi_n(\bt)$ from equation~\eqref{eq:Psi_n_general}.
+More precisely, holding the surrogate fixed and differentiating under the integral sign,
+%
+\begin{align*}
+  \nabla_\bt \mathcal{L}_{\mathrm{ZQE}}(\bt)
+  &=
+  \frac{1}{n}\sum_{i=1}^n
+  \mathbb{E}_{q_{\Z\mid\Y;\bt}(\cdot\mid\y_i)}
+  \!\bigl[\nabla_\bt \log f_{\Y\mid\Z;\bt}(\y_i\mid\Z)\bigr]
+  -
+  \mathbb{E}_{f_{\Y;\bt}}
+  \mathbb{E}_{q_{\Z\mid\Y;\bt}(\cdot\mid\cdot)}
+  \!\bigl[\nabla_\bt \log f_{\Y\mid\Z;\bt}(\Y\mid\Z)\bigr]
+  \\[4pt]
+  &=\;
+  \Psi_n(\bt).
+\end{align*}
+%
+Hence minimising $\mathcal{L}_{\mathrm{ZQE}}$ over $\bt$ is equivalent to solving the
+$Z_q$ estimating equations in the score direction.
+
+\paragraph{Practical computation (fixed-seed Monte Carlo).}
+Both expectations are approximated by Monte Carlo.
+For the first term, draw $z_m \sim q_{\Z\mid\Y;\bt}(\cdot\mid\y_i)$ for $m=1,\dots,M$
+via reparameterisation:
+%
+\[
+  z_m = \mu_q(\y_i;\bt) + \sigma_q(\y_i;\bt)\,\odot\,\varepsilon_m,
+  \qquad \varepsilon_m \sim \mathcal{N}(0,I).
+\]
+%
+For the second term, draw $(\tilde\y_m, \tilde z_m)$ from the joint generative model:
+$\tilde z_m \sim f_\Z$, $\tilde\y_m \sim f_{\Y\mid\Z;\bt}(\cdot\mid\tilde z_m)$.
+Fixing the seeds $\{\varepsilon_m\}$ and $\{(\tilde z_m, \tilde\y_m)\}$ before
+optimising makes the objective deterministic in $\bt$, so that a quasi-Newton method
+(L-BFGS) is applicable with valid curvature estimates throughout the solve.
+The reparameterisation ensures that $\nabla_\bt$ still flows through $z_m(\bt)$ even
+though the noise $\varepsilon_m$ is fixed.
+
+\paragraph{Connection to the ELBO.}
+Dropping the centering term recovers the ELBO:
+%
+\[
+  \mathcal{L}_{\mathrm{ELBO}}(\bt)
+  =
+  \frac{1}{n}\sum_{i=1}^n
+  \mathbb{E}_{q_{\Z\mid\Y;\bt}(\cdot\mid\y_i)}
+  \!\bigl[\log f_{\Y\mid\Z;\bt}(\y_i\mid\Z)\bigr]
+  -
+  \mathrm{KL}\!\bigl(q_{\Z\mid\Y;\bt}(\cdot\mid\y_i)\;\|\;f_\Z\bigr).
+\]
+%
+The $Z_q$ objective differs in two respects: (i) it replaces the KL penalty by the
+model-expectation centering term, and (ii) it does not penalise the surrogate for
+deviating from the prior. As a result, the population maximum of
+$\mathcal{L}_{\mathrm{ZQE}}$ at any surrogate always coincides with $\bt_0$, whereas
+the population ELBO maximum generally does not when $q \neq f_{\Z\mid\Y;\bt}$.

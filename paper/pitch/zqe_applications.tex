@@ -1,0 +1,254 @@
+% Standalone one-page pitch for ZQE applications
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{parskip}
+\geometry{margin=1in}
+\title{ZQE: Applications and Practical Recipe}
+\author{Will White}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This note summarizes practical applications and an actionable recipe for ZQE
+(``Zeroth‑order Quadratic Estimator'') as implemented in the project. The
+document is a concise, self-contained briefing intended for a research
+supervisor or collaborator: motivating idea, estimator definition, recommended
+practical settings, and where ZQE is especially useful.
+\end{abstract}
+
+\section*{1. One‑Line Summary}
+ZQE (``Consistent Decoder Estimation Without Accurate Posterior Inference'')
+is a simple, simulation‑based objective that estimates decoder parameters
+(loading matrix $W$ and intercept $b$) directly by matching decoder outputs
+under real and simulated data using a fixed imputation of latent variables.
+It enables consistent recovery of interpretable decoder structure even when
+accurate posterior inference is difficult.
+
+\section*{2. Formal Definition (short)}
+Let $h_{\mathrm{enc}}(y)$ and $h_{\mathrm{dec}}(y)$ be chosen sufficient‑statistic
+transforms of the observed response $y$. Let $\eta(z)=W z + b$ be the linear
+predictor. The ZQE cross‑term objective optimises
+\[
+\mathcal{L}_{\mathrm{ZQE}}(W,b) \,=\,-\Biggl(\frac{1}{N}\sum_{i=1}^N
+h_{\mathrm{dec}}(y_i)^\top\,\eta\bigl(\hat z(y_i)\bigr) 
+- \frac{1}{M}\sum_{m=1}^M h_{\mathrm{dec}}(y^{\mathrm{sim}}_m)^\top\,\eta\bigl(\hat z(y^{\mathrm{sim}}_m)\bigr)\Biggr),
+\]
+where the imputed latent is the Gaussian MAP closed‑form:
+\[
+\hat z(y) = \bigl(W^{\top}W + \lambda I\bigr)^{-1} W^{\top}\bigl(h_{\mathrm{enc}}(y) - b\bigr).
+\]
+The outer optimisation updates $(W,b)$ (e.g. by SGD) while treating $\hat z(\cdot)$
+as a fixed imputation (no gradient through the encoder). A centering term is
+estimated by simulation from the generative model to remove nuisance terms.
+
+\section*{3. Why this helps (intuition)}
+- By fixing the imputation, gradients target only decoder parameters, avoiding
+  the complexity of simultaneous posterior learning.
+- The centering (simulation) term cancels biases due to the chosen
+  $h$‑transforms and makes the objective robust across link choices.
+- Closed‑form Gaussian MAP encoder is cheap and stable for linear decoders,
+  and allows interpretable sparsity recovery in $W$.
+
+\section*{4. Practical Recipe (recommended defaults)}
+\begin{itemize}
+  \item Transform choices: use $h(\cdot)=\log(1+y)$ (``log1p'') or the
+    Anscombe/sqrt transforms for low counts; choose encoder/decoder transforms
+    independently to match modelling assumptions.
+  \item Warm start: initialise $W$ from the top‑$Q$ left singular vectors of
+    centered $h(Y)$ (SVD warm start). This places parameters in a principal
+    component rotation, accelerating sparsification.
+  \item Proximal sparsity: apply an \emph{LR‑aware} proximal L1 operator
+    (soft‑threshold after each optimiser step) with threshold $\tau = \lambda\cdot\mathrm{lr}$.
+    This produces exact zeros, and scaling with the current learning rate makes
+    sparsification aggressive early and fine later.
+  \item Centering draws: draw a large number of simulated samples per outer
+    update (we recommend at least $M\gtrsim 10N$ or a fixed minimum such as
+    $M=2000$) under \texttt{torch.no\\_grad()} — this cheaply reduces centering
+    variance without affecting parameter gradients.
+  \item Numerical stability: add a small jitter to the encoder linear system,
+    e.g. $W^{\top}W + (\lambda+\varepsilon) I$ with $\varepsilon\approx 10^{-6}$,
+    and detect any fully‑zero loading columns after proximal steps and
+    reinitialise them with tiny random noise to avoid singular solves.
+\end{itemize}
+
+\section*{5. Typical hyperparameters to try}
+Start with these sensible defaults and then sweep if necessary:
+\begin{itemize}
+  \item Optimiser: SGD with an initial learning rate of $\approx 1.0$ and a
+    Robbins–Monro decay schedule (flat‑phase then power decay).
+  \item Proximal L1: $\lambda\in[0.001, 0.05]$ (larger values make sparser $W$).
+  \item Centring draws: $M = \max(10N, 2000)$.
+  \item Ridge (encoder): $\lambda_{\mathrm{ridge}}\approx 1.0$ plus jitter $10^{-6}$.
+\end{itemize}
+
+\section*{6. Applications}
+ZQE is particularly useful where the decoder/observation model is the primary
+object of inference and where posterior accuracy is costly or unnecessary:
+\begin{itemize}
+  \item Sparse factor loadings recovery (e.g. interpretable latent factors in
+    single‑cell RNA‑seq or ecological trait models).
+  \item High‑dimensional GLLVMs where posterior inference is expensive and a
+    simple MAP imputation suffices to estimate a consistent decoder.
+  \item Topic or latent factor models where direct decoder estimation (topics,
+    item factors) is preferred to full posterior amortisation.
+  \item Recommender or choice models where interpretable loadings are the
+    primary target and exact posterior uncertainties are secondary.
+\end{itemize}
+
+\section*{7. Caveats and recommendations}
+\begin{itemize}
+  \item ZQE recovers the decoder under modelling assumptions on $h$ and the
+    encoder; poor choices of transforms can slow or bias recovery — use simple
+    transforms (log1p, sqrt) as baselines.
+  \item If columns collapse to exact zero early (over‑aggressive prox), add
+    small reinitialisation and reduce proximal strength or learning rate.
+  \item Use SVD warm starts when seeking sparse solutions — random initialisation
+    may require longer runs and more tuning.
+\end{itemize}
+
+\section*{8. How to compile}
+On a machine with a standard LaTeX distribution (\texttt{pdflatex}):
+\begin{verbatim}
+pdflatex paper/pitch/zqe_applications.tex
+\end{verbatim}
+If you are on Windows and do not have LaTeX, installing MiKTeX is recommended.
+On Linux, install TeX Live (e.g. \texttt{sudo apt install texlive-latex-recommended}).
+
+\section*{9. Next steps / Offer}
+If you would like, I can:
+\begin{itemize}
+  \item run a quick compile in this environment and return the PDF, or
+  \item adapt the note to include a one‑page figure from your experiment
+    (e.g. coefficient paths from a \texttt{lambda} sweep).
+\end{itemize}
+
+% Updated standalone one-page pitch for ZQE applications
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{geometry}
+\usepackage{hyperref}
+\usepackage{parskip}
+\geometry{margin=1in}
+	itle{ZQE: Applications and Practical Recipe (revised)}
+\author{Will White}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This one‑page brief summarises practical recommendations for the $Z_q$ (ZQE)
+estimator based on the paper draft (`paper/main.tex`) and the project working
+notes (`CLAUDE.md`). It emphasises the \emph{Gaussian proxy} as the canonical
+practical choice, documents implementation safeguards observed in experiments,
+and provides a concise recipe for reproducible experiments and sparse recovery.
+\end{abstract}
+
+\section*{1. Core message}
+The $Z_q$ estimator yields consistent decoder estimation even with misspecified
+or frozen surrogate inference, provided the centered estimating equations are
+used and a local Jacobian nonsingularity condition holds (see `paper/main.tex`).
+For practical use, the Gaussian proxy (choose $T(y)$ to make a homoskedastic
+proxy) is the canonical instance: it is computationally trivial, theoretically
+tractable, and empirically robust in large‑$p$ settings.
+
+\section*{2. Precise estimator (practical form)}
+Pick a transform $T(y)$ (e.g. $\log(1+y)$ or $\sqrt{y}$) and form the Gaussian
+proxy so that
+\[
+T(y) \mid z \approx \mathcal N(Wz + b,\, \sigma^2 I).
+\]
+The closed‑form MAP encoder is
+\[
+\hat z(y) = (W^\top W + \sigma^2 I)^{-1} W^\top (T(y) - b),
+\]
+and the ZQE objective is the centered cross‑term
+\[
+\mathcal L(\theta) = -\Bigl(\mathbb E_{\text{data}}[T(Y)\cdot\eta(\hat z(Y))] - \mathbb E_{\theta}[T(Y^{\text{sim}})\cdot\eta(\hat z(Y^{\text{sim}}))]\Bigr).
+\]
+Compute the centering expectation by simulation (large fixed bank or on‑the‑fly
+MC under \texttt{no\_grad()}). Do not backpropagate through the encoder solves.
+
+\section*{3. Why the Gaussian proxy (summary of repo notes)}
+- It gives a closed‑form encoder and often yields deterministic or low‑variance
+  centering terms (multiple imputation with fixed seeds).
+- In large‑$p$ regimes the ridge encoder concentrates (LLN in $p$), meaning the
+  proxy approaches the posterior mean and ZQE recovers the complete‑data score.
+- The Gaussian proxy lets us verify the Jacobian nonsingularity condition
+  analytically in canonical settings (Poisson GLLVM), which strengthens the
+  theoretical contribution for a statistical venue (JRSS‑B recommendation).
+
+\section*{4. Implementation checklist (must‑do)}
+\begin{itemize}
+  \item \textbf{Encoder under no\_grad}: compute $\hat z(\cdot)$ inside
+    	exttt{torch.no\_grad()} so gradients flow only through $\eta(\hat z)$.
+  \item \textbf{SVD warm start}: initialise $W$ from top‑$Q$ PCs of centered
+    $T(Y)$ to place parameters in a rotation where sparsity is discoverable.
+  \item \textbf{LR‑aware proximal L1}: apply soft‑threshold after each
+    optimiser step with threshold $\tau = \lambda \times \mathrm{lr\\_now}$
+    (proximal ISTA scaled by current LR). This yields exact zeros and a
+    meaningful regularisation path when warm‑starting large→small $\lambda$.
+  \item \textbf{Large centering budget}: draw many simulated examples for the
+    centering term (recommend $M=\max(10N,2000)$) inside \texttt{no\_grad()} to
+    sharply reduce Monte‑Carlo noise at low cost.
+  \item \textbf{Numerical safeguards}: add a tiny jitter $\varepsilon\approx 10^{-6}$
+    when forming $W^\top W + (\sigma^2+\varepsilon)I$, and detect any fully‑zero
+    columns after prox steps and reinitialise them with tiny Gaussian noise.
+\end{itemize}
+
+\section*{5. Practical defaults and tuning}
+\begin{itemize}
+  \item Optimiser: SGD with flat phase + Robbins–Monro decay; initial lr~1.0.
+  \item Proximal L1: try $\lambda\in[0.001,0.05]$; warm‑start grid from large→small.
+  \item Encoder ridge / proxy variance: $\sigma^2\approx 1.0$ (tune as needed).
+  \item Centering draws: $M = \max(10N, 2000)$ as a robust default.
+\end{itemize}
+
+\section*{6. Experiments and story advice (paper/main.tex + CLAUDE.md)}
+- Lead with the general ZQE framework and immediately present the Gaussian proxy
+  as the canonical, constructive instance (answers the practical "what should I use?" question).
+- Emphasise the large‑$p$ concentration phenomenon and report a p‑sweep figure.
+- De‑emphasise the frozen‑amortised‑encoder experiment as a main claim (it
+  creates interpretational complications); keep a short caveat in discussion.
+- Include verification of the Jacobian nonsingularity for Poisson GLLVMs with
+  the Gaussian proxy (this closes the main theoretical gap noted in project
+  notes and helps target JRSS‑B).
+
+\section*{7. Common pitfalls}
+\begin{itemize}
+  \item Do not backpropagate through the encoder; doing so reintroduces the
+    chain‑rule terms the theory cancels and creates gradient leakage.
+  \item L1 inside the loss (non‑proximal) rarely produces exact zeros — use a
+    proximal soft‑threshold after the optimizer step to recover exact sparsity.
+  \item If many columns die early, lower the prox strength or reinitialise
+    dead columns — otherwise the encoder linear system becomes ill‑conditioned.
+\end{itemize}
+
+\section*{8. How to compile and share}
+To compile locally with \texttt{pdflatex}:
+\begin{verbatim}
+pdflatex paper/pitch/zqe_applications.tex
+\end{verbatim}
+If compilation fails, install a TeX distribution (MiKTeX on Windows, TeX Live
+on Linux). If you want, I can run a quick compile here and return the PDF.
+
+\section*{9. Offer}
+I can also:
+\begin{itemize}
+  \item insert a one‑page figure (lambda‑path coefficient heatmap or active‑count
+    curve) into this note, or
+  \item produce a short appendix summarising the Jacobian verification for the
+    Poisson GLLVM with the Gaussian proxy (ready for JRSS‑B reviewers).
+\end{itemize}
+
+\vspace{1em}
+\noindent Best,
+\newline Will White
+
+\end{document}

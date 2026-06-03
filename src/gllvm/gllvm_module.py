@@ -161,6 +161,10 @@ class GLLVM(nn.Module):
         self.families: List[GLMFamily] = []
         self.p_defined = 0
 
+        # Optional structural-zero mask on loadings (p, q).  1 = free, 0 = forced zero.
+        # Registered as a buffer so it travels with .to(device) / state_dict.
+        self.register_buffer("wz_mask", torch.ones(self.p, self.q))
+
     # --------------------------------------------------------
     # Building the model
     # --------------------------------------------------------
@@ -181,6 +185,31 @@ class GLLVM(nn.Module):
         family = GLMFamily(GLM, idx, params, name)
         self.families.append(family)
         self.p_defined += len(family.idx)
+
+    def set_wz_mask(self, mask: torch.Tensor):
+        """
+        Set a structural-zero mask on the loadings matrix.
+
+        Parameters
+        ----------
+        mask : torch.Tensor, shape (p, q) or (q,) broadcastable to (p, q)
+            Binary mask.  Entry (i, j) == 0 means response i does not load on
+            latent dimension j.  The mask is stored as a buffer and is NOT a
+            learnable parameter.
+
+        Example
+        -------
+        # silence the last 3 latent dimensions for all responses:
+        mask = torch.ones(model.p, model.q)
+        mask[:, -3:] = 0
+        model.set_wz_mask(mask)
+        """
+        mask = mask.float().to(self.wz.device)
+        if mask.shape != (self.p, self.q):
+            raise ValueError(
+                f"mask shape {tuple(mask.shape)} does not match (p={self.p}, q={self.q})"
+            )
+        self.wz_mask = mask
 
     def to(self, *args, **kwargs):
         """
@@ -215,7 +244,8 @@ class GLLVM(nn.Module):
         """
         self._check_assignments()
 
-        linpar = z @ self.wz.T
+        wz_eff = self.wz * self.wz_mask          # apply structural-zero mask
+        linpar = z @ wz_eff.T
 
         if self.k > 0:
             if x is None:
