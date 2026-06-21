@@ -1,177 +1,40 @@
-# Experiment: Robustness of ZQE to Encoder Misspecification  
-**Demonstrating that ZQE remains consistent even when the encoder is severely misspecified, while VI collapses.**
+# Poisson simulations in gllvm's turf
 
-This experiment creates a **2D grid** over:
+The goal is to compare the gaussian procrustes , bias, variance of estimation across a sweep of conditions.
 
-1. **Encoder misspecification severity** (shrink encoder width)
-2. **Sample size** (small to large datasets)
+We use the /simulations/poisson.ipynb notebook as guide for setup and simulations.
 
-For every configuration in the grid, we fit:
+Fully dense.
 
-- **Variational Inference (VI / VAE baseline)**
-- **ZQE with ELBO-trained encoder**
-- **ZQE with synthetic-data–trained encoder (optional)**
+We go like this:
 
-We then compare parameter recovery, estimating-equation residuals, identifiability, and likelihood.
+q = 2
+p = 10, 20, 50, 100
+n = 20, 100, 500
 
----
+=12 settings
+each repeated H = 20 times
 
-# 1. Model Used: GLLVM
+we want a wrapper for this simulation (not in the source code, specific for this simulation)
 
-We use a Generalized Latent Variable Model with a mixture of GLM observation families, because:
+wrapper takes: q, p, n, seed (for the simulation)
 
-- the likelihood is known,
-- the latent posterior is nontrivial (non-Gaussian, non-conjugate),
-- parameter recovery is cleanly evaluable,
-- misspecification is easy to induce in the encoder,
-- the ground truth posterior allows clean benchmarking.
+returns: 
 
----
+time it took for each fit
 
-# 2. Experiment Grid
+ZQE: T=log1p, for both decoder and encoder, gaussian map encoder, specification as in simulations/poisson.ipynb
+gllvm: the R wrapper we currently use
 
-We vary **encoder width** \( h \) and **sample size** \( n \):
+for each method and each true model, all parameters stored flattened, after procrustes rotation: the loadings as wella s the intercepts.
 
-### Encoder widths:
-\[
-h \in \{128, 64, 32, 16, 8, 4, 2, 1\}
-\]
 
-Small values produce catastrophic amortization bias.
+i dunno how best to save this, you will know better. it needs to be easily reproducible. maybe each setting creates a csv or parquet file or whatever is good with the results, as well as a file that explains what each column is. I DO NOT KNOW. you figure it out the best.
 
-### Sample sizes:
-\[
-n \in \{200, 500, 1000, 2000, 5000, 10000\}
-\]
 
-Larger datasets reveal asymptotic behavior.
+Make it so that i can increase to H = 100 if needed, without requiring to redo the first 20, see? ok good.
 
----
+## analysis
+once done, we want a notebook for the analysis of the result
 
-# 3. Methods Compared
-
-For each pair \((h, n)\), we fit:
-
-### **(1) Variational Inference (VI / VAE-like)**  
-- Encoder is an MLP of width \( h \)
-- Decoder is GLLVM
-- Parameters learned by ELBO
-- Known to suffer amortization bias under encoder misspecification
-
-### **(2) ZQE (with ELBO-trained encoder)**  
-- Encoder first trained by ELBO, *exactly like VI*  
-- Decoder then updated by ZQE:
-  - No gradients through encoder  
-  - Only uses samples from encoder  
-  - Bias removed by centered Z estimation
-
-### **(3) ZQE (encoder trained by synthetic data)** *(optional)*  
-- Generate arbitrarily many synthetic \((Z, Y)\) pairs from decoder  
-- Train encoder to regress \(Y \mapsto Z\)  
-- This decouples encoder/decoder entirely  
-- Illustrates extreme robustness of ZQE
-
----
-
-# 4. Metrics Recorded
-
-For each fitted model:
-
-### **1. Parameter estimation error**
-\[
-\|\hat\theta - \theta_0\|_2
-\]
-
-Assesses correctness of decoder parameters.
-
----
-
-### **2. Estimating-equation residual**
-\[
-\|\bar\psi\|_2
-\]
-
-- VI: does **not** go to zero with \( n \) if encoder misspecified  
-- ZQE: always decreases with \(n\)
-
-This directly visualizes the **core theoretical claim**.
-
----
-
-### **3. Smallest singular value of the Jacobian**
-\[
-\sigma_{\min}\big(A_q(\hat\theta)\big)
-\]
-
-Measures **identifiability** of the estimating equations.
-
-Expected behavior:
-
-| Encoder size ↓ | VI Jacobian | ZQE Jacobian |
-|----------------|------------|---------------|
-| well-specified | non-singular | non-singular |
-| medium | deteriorates | stable |
-| tiny | collapses | remains identifiable |
-
-This matches the nonsingularity requirement from theory.
-
----
-
-### **4. Held-out NLL (IWAE estimate)**
-We estimate:
-\[
--\log p(Y \mid \hat\theta) \approx \text{IWAE}(k=500)
-\]
-
-ZQE usually improves or matches VI.
-
----
-
-# 5. Visual Outputs
-
-For each method:
-
-### **Heatmap 1 – parameter error**
-- x-axis: encoder width  
-- y-axis: sample size  
-- cell: RMSE of \(\hat\theta\)
-
-### **Heatmap 2 – estimating-equation residual**
-- Shows VI → biased plateau  
-- ZQE → decreases with \( n \)
-
-### **Heatmap 3 – Jacobian σᵐᵢₙ**
-- VI → degeneracy under small encoder  
-- ZQE → stays identifiable
-
-### **Heatmap 4 – NLL (IWAE-500)**  
-Optional but strengthens results.
-
----
-
-# 6. Why This Experiment Is a Perfect Demonstration
-
-This setup isolates exactly the theoretical contribution:
-
-- VI performs well **only** when encoder is rich enough  
-- VI collapses when encoder is bottlenecked  
-- ZQE remains:
-  - **consistent**  
-  - **unbiased**  
-  - **well-identified**  
-  - **robust to posterior misspecification**
-
-All within the same generative modeling framework.
-
-GLLVM ensures clarity, interpretability, and complete control.
-
----
-
-# 7. Optional Additions
-
-- Track encoder posterior error:
-  \[
-  \text{KL}(q(z|y) \| f(z|y))
-  \]
-- Scatterplots comparing recovered parameters to truth  
-- Surface plots of ZQE convergence trajectories  
+somehow i want plot of procrustes error across the sweep, but also bias and variance. maybe some boxplots or stuff would be nice. 

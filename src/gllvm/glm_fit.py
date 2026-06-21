@@ -14,6 +14,7 @@ Implemented to be numerically stable and batch the qxq solves over n columns.
 
 from typing import Tuple, Dict, Optional
 import torch
+import torch.nn.functional as F
 
 
 def initial_gaussian_fit(X: torch.Tensor, Y: torch.Tensor, offset: Optional[torch.Tensor] = None, eps: float = 1e-6) -> torch.Tensor:
@@ -161,6 +162,93 @@ def poisson_newton_batch(
     return B, diagnostics
 
 
+def bernoulli_newton_batch(
+    X: torch.Tensor,
+    Y: torch.Tensor,
+    B0: torch.Tensor,
+    offset: Optional[torch.Tensor] = None,
+    lam: float = 1.0,
+    max_iter: int = 50,
+    tol: float = 1e-6,
+    damp: float = 1.0,
+    verbose: bool = False,
+    max_halvings: int = 10,
+) -> Tuple[torch.Tensor, Dict]:
+    """Batched Newton (IRLS) updates for the Bernoulli GLM (logit link).
+
+    Solves, per column ``i``, for ``B`` (q, n) minimising the ridge-penalised
+    negative Bernoulli log-likelihood
+
+        sum_p [ softplus(eta_pi) - Y_pi * eta_pi ] + (lam/2) ||B_i||^2,
+        eta = X B (+ offset),
+
+    i.e. the MAP latent under a logit GLLVM with an ``N(0, lam^{-1} I)`` prior.
+    The objective is concave in ``B`` so Newton converges; per-column Hessians
+    ``H_i = X^T diag(w_i) X + lam I`` with weights ``w = mu(1-mu)`` are solved in
+    a batched ``q x q`` solve, mirroring :func:`poisson_newton_batch`.
+    """
+    p, q = X.shape
+    _, n = Y.shape
+    B = B0.clone().to(X.device)
+    eye = torch.eye(q, device=X.device, dtype=X.dtype)
+
+    def _nll(Bv):
+        eta = X @ Bv
+        if offset is not None:
+            eta = eta + offset
+        return torch.sum(F.softplus(eta) - Y * eta) + 0.5 * lam * torch.sum(Bv * Bv)
+
+    it = 0
+    rel_change = 0.0
+    boundary = False
+    for it in range(1, max_iter + 1):
+        eta = X @ B
+        if offset is not None:
+            if offset.shape != eta.shape:
+                raise ValueError(f"offset shape {offset.shape} != eta shape {eta.shape}")
+            eta = eta + offset
+        mu = torch.sigmoid(eta)                  # (p, n)  E[Y]
+        w = mu * (1.0 - mu)                       # (p, n)  Bernoulli variance
+
+        nll_old = torch.sum(F.softplus(eta) - Y * eta) + 0.5 * lam * torch.sum(B * B)
+
+        g = X.T @ (mu - Y) + lam * B             # (q, n)
+        H = torch.einsum('pa,pj,pb->abj', X, w, X)   # (q, q, n)
+        H = H + (lam + 1e-8) * eye[:, :, None]
+
+        H_b = H.permute(2, 0, 1).contiguous()    # (n, q, q)
+        g_b = g.T.unsqueeze(-1).contiguous()     # (n, q, 1)
+        try:
+            delta = torch.linalg.solve(H_b, g_b).squeeze(-1).T   # (q, n)
+        except RuntimeError:
+            delta = torch.empty_like(g)
+            for j in range(n):
+                delta[:, j] = torch.linalg.solve(H[:, :, j], g[:, j:j+1]).squeeze(-1)
+
+        B_old = B
+        B_new = B - damp * delta
+        nll_new = _nll(B_new)
+
+        halvings = 0
+        while (not torch.isfinite(nll_new)) or (nll_new > nll_old + 1e-9):
+            if halvings >= max_halvings:
+                B_new = B_old
+                boundary = True
+                break
+            B_new = 0.5 * (B_new + B_old)
+            nll_new = _nll(B_new)
+            halvings += 1
+
+        rel_change = torch.norm(B_new - B_old) / (torch.norm(B_old) + 1e-12)
+        B = B_new
+        if verbose:
+            print(f"Bern-Newton it={it:3d} rel_change={rel_change:.3e} halvings={halvings}")
+        if rel_change < tol or boundary:
+            break
+
+    return B, {"iters": it, "rel_change": float(rel_change)}
+
+
 if __name__ == "__main__":
     # small smoke test
     torch.manual_seed(0)
@@ -173,6 +261,11 @@ if __name__ == "__main__":
     B0 = initial_gaussian_fit(X, Y)
     B_hat, info = poisson_newton_batch(X, Y, B0, lam=1e-3, max_iter=50)
     print("smoke no-offset: rel_err=", torch.norm(B_hat - B_true) / torch.norm(B_true))
+
+    # bernoulli smoke test
+    Yb = torch.bernoulli(torch.sigmoid(X @ B_true))
+    Bb, infob = bernoulli_newton_batch(X, Yb, torch.zeros(q, n), lam=1.0, max_iter=50)
+    print("smoke bernoulli: iters=", infob["iters"], "rel_change=", infob["rel_change"])
 
     # with-offset case
     offset_true = 0.2 * torch.randn(p, n)

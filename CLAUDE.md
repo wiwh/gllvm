@@ -32,9 +32,26 @@ require gradients through the encoder.  Detaching the encoder inside `torch.no_g
 **exact**, not an approximation.  This means parameter-free (analytical) encoders work just as
 well as amortised ones — and are strictly better because they update automatically with θ.
 
-**T(y) choice**: Use `T(y) = log(1+y)` (non-canonical) via `PoissonLog1pGLM`.  The canonical
-`T=y` causes NaN/explosion when the decoder is randomly initialised (large Poisson rates in
-synthetic Y_q).  `log1p` bounds the centring term.
+**T(y) choice**: T is a per-instance callable configured at construction —
+`PoissonGLM(linpar, T=torch.log1p)` (threaded through `GLMFamily.params`, so
+`add_glm(PoissonGLM, idx=..., params={"T": torch.log1p})`).  It defaults to the family
+canonical statistic (`_T_canonical`, = `y` for Poisson) when omitted.  Use `T=log1p` for
+ZQE: the canonical `T=y` causes NaN/explosion when the decoder is randomly initialised
+(large Poisson rates in synthetic Y_q); `log1p` bounds the centring term.  Any measurable
+T is valid (score-function identity), so T is decoupled from the generative model.
+
+**Fitter**: `ZQEAutoFitter` in `src/gllvm/autofit.py` — the recommended entry point.  Adam
+warm-up → single-chain SGD + **Ruppert–Polyak** averaging (LR decays *within* each chain,
+`lr_k = refine_lr/(1+k)**refine_lr_power`; the variance-reduction step), with a
+**sequential-restart** convergence check: warm-restart at a further-decayed base LR
+(`refine_lr_decay` per restart), Procrustes-align, and stop when the estimate stops moving
+(`change_ < tol`).  LR annealing is essential — constant-LR Polyak has an O(lr) noise floor, so
+without it `change_` plateaus above `tol` and the fit "stops" instead of converging.  A
+complementary check is the tail-averaged gradient `grad_norm_` = ‖avg ∇W‖/‖W‖ ≈ 0, and its
+per-step drift `lr·grad_norm_` (both in `plot_convergence`).  (The earlier multi-head/consensus
+variant was dropped — heads OOM and scale poorly, and their spread is *algorithmic* noise, not a
+standard error.)  The older hand-rolled fitters in `fitter.py` (`ZQEPoissonFitter`, `ZQEFitter`,
+…) are superseded.
 
 ---
 
@@ -68,10 +85,13 @@ initially in the region of encoder validity.
 
 Defined in `src/gllvm/glms.py`.  All inherit from `torch.distributions.*` AND `GLMMixin`.
 
-- `PoissonGLM`          — canonical, `T(y)=y`, log link
-- `PoissonLog1pGLM`     — non-canonical `T(y)=log1p(y)`, rest unchanged ← **used in ZQE**
-- `PoissonMixedTGLM`    — `T(y)=y+log1p(y)` (experimental)
+- `PoissonGLM`          — log link; canonical `T(y)=y`, pass `T=torch.log1p` for ZQE
 - `GaussianGLM`, `GammaGLM`, `NegativeBinomialGLM`, `BinomialGLM`
+
+Each family defines `_T_canonical(y)` (its canonical statistic); the public `T(y)` returns the
+`T=` override if one was passed to `__init__`, else `_T_canonical`.  This replaced the old
+subclass-per-transform zoo (`PoissonLog1pGLM`, `PoissonSqrtGLM`, `PoissonMixedTGLM`, …), which
+has been removed — express any of them as `PoissonGLM(..., T=<callable>)`.
 
 The `zq_log(y)` method returns `T(y) * eta()` — the informative term in the estimating equation.
 
@@ -133,8 +153,9 @@ transformations are wrong for loading matrices:
 The correct metric is pure orthogonal rotation only. Division by $\|W\|_F$ makes the score
 scale-free: a method that shrinks all loadings toward zero will score worse (correctly).
 
-Implemented as `procr(g_true, g_est)` in `exp_A_sparse_loadings.ipynb` and
-in `run_r_gllvm()` for the R baseline.
+Implemented as `procrustes_error(W_true, W_est)` in `gllvm.autofit` (accepts numpy or torch,
+so it scores ZQE, VAE and the R baseline uniformly).  Older notebooks inline an equivalent
+`procr(g_true, g_est)`.
 
 ---
 
@@ -143,12 +164,17 @@ in `run_r_gllvm()` for the R baseline.
 ```
 src/gllvm/
   encoder.py          — all encoder classes
-  fitter.py           — VAEFitter, ZQEFitter, ZQEGAFitter
+  autofit.py          — ZQEAutoFitter (recommended ZQE fitter) + orthogonal_align + procrustes_error
+  diagnostics.py      — plot_objective/lr/gradnorm/convergence/grad_balance/params/deviance (reads fitter.history)
+  r_gllvm.py          — RGllvm: subprocess wrapper around R's gllvm() (the baseline)
+  fitter.py           — VAEFitter (+ superseded ZQE fitters: ZQEPoissonFitter, ZQEFitter, …)
   gllvm_module.py     — GLLVM model, GLMFamily
-  glms.py             — GLM distribution classes
+  glms.py             — GLM distribution classes (T configurable via PoissonGLM(..., T=…))
   simulations/        — make_sparse, make_mixed, simulate
   plots.py            — compare_wz, compare_bias, compare_z
 
+simulations/
+  poisson.ipynb                — clean 3-way Poisson comparison (Poisson-MAP / Gaussian-MAP / R gllvm)
 simulations/simulation_sparse/
   exp_A_sparse_loadings.ipynb  — main experiment notebook
 ```

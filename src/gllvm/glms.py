@@ -3,29 +3,39 @@ ZQ-GLM wrappers over PyTorch distributions.
 
 Each GLM defines:
     - eta() : natural parameter (GLM linear predictor)
-    - T(y)  : sufficient statistic
+    - T(y)  : ZQE statistic (the "sufficient statistic" of the estimating
+              equation; not strictly sufficient).  Defaults to the family's
+              canonical statistic but is fully configurable per instance via
+              the ``T=`` constructor argument, e.g.
+                  PoissonGLM(linpar, T=torch.log1p)
+              The override is threaded through GLMFamily.params, so it persists
+              across the transient re-instantiations done by GLLVM.forward.
     - deviance(y) : classical GLM deviance
     - __init__: converts (linpar, scale) into parameters required by
                 torch.distributions
 
 Each GLM inherits from the corresponding torch.distributions class but exposes
 a clean GLM interface suitable for GLLVMs and ZQ estimators.
+
+Note on the two roles of T
+--------------------------
+The *decoder* T(y) configured here is the statistic in the ZQE estimating
+equation E[T(y)·eta] - E_theta[T(Yq)·eta] = 0.  By the score-function identity
+this can be ANY measurable map; it is decoupled from the generative model
+(sampling / log_prob are unchanged).  The parameter-free encoders apply their
+own internal linearising transform (log1p) as part of a Gaussian *proxy* model
+for z|y — that is a separate concern from the decoder's T.
 """
 
 from abc import ABC, abstractmethod
 import torch
 import torch.distributions as D
-from typing import Any
+from typing import Any, Callable
 
 __all__ = [
     "GLMMixin",
     "GaussianGLM",
     "PoissonGLM",
-    "PoissonLog1pGLM",
-    "PoissonMixedTGLM",
-    "PoissonSqrtGLM",
-    "PoissonLog1pSqrtGLM",
-    "PoissonMultiTGLM",
     "GammaGLM",
     "NegativeBinomialGLM",
     "BinomialGLM",
@@ -40,15 +50,32 @@ class GLMMixin(ABC):
     linpar: torch.Tensor
     scale: float | torch.Tensor
 
+    # Per-instance ZQE-statistic override.  None -> use the family canonical
+    # statistic (_T_canonical).  Set via the ``T=`` constructor argument.
+    _T_override: Callable[[torch.Tensor], torch.Tensor] | None = None
+
     @abstractmethod
     def eta(self) -> torch.Tensor:
         """Natural parameter eta."""
         pass
 
     @abstractmethod
-    def T(self, y: torch.Tensor) -> torch.Tensor:
-        """Sufficient statistic T(y)."""
+    def _T_canonical(self, y: torch.Tensor) -> torch.Tensor:
+        """Family canonical ZQE statistic (e.g. y for Poisson, log(y) for Gamma)."""
         pass
+
+    def T(self, y: torch.Tensor) -> torch.Tensor:
+        """
+        ZQE statistic T(y).
+
+        Returns the configured override if one was passed to ``__init__``
+        (e.g. ``PoissonGLM(linpar, T=torch.log1p)``), otherwise the family
+        canonical statistic.  Any measurable map is valid: the score-function
+        identity makes the ZQE centring vanish at the truth for any T.
+        """
+        if self._T_override is not None:
+            return self._T_override(y)
+        return self._T_canonical(y)
 
     @abstractmethod
     def deviance(self, y: torch.Tensor) -> torch.Tensor:
@@ -76,16 +103,18 @@ class GaussianGLM(D.Normal, GLMMixin):
     Var[Y] = scale (dispersion phi)
     """
 
-    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0,
+                 T: Callable[[torch.Tensor], torch.Tensor] | None = None):
         self.linpar = linpar
         self.scale = torch.as_tensor(scale, device=linpar.device)
+        self._T_override = T
         std = torch.sqrt(self.scale)
         super().__init__(loc=linpar, scale=std)
 
     def eta(self):
         return self.linpar
 
-    def T(self, y):
+    def _T_canonical(self, y):
         return y
 
     def deviance(self, y):
@@ -109,16 +138,18 @@ class PoissonGLM(D.Poisson, GLMMixin):
     Var[Y] = mu, scale fixed to 1.
     """
 
-    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0,
+                 T: Callable[[torch.Tensor], torch.Tensor] | None = None):
         self.linpar = linpar
         self.scale = torch.tensor(1.0, device=linpar.device)
-        rate = torch.exp(torch.clamp(linpar, max=10.0))  # clamp: exp(10)≈22k, avoids inf
+        self._T_override = T
+        rate = torch.exp(linpar)
         super().__init__(rate=rate)
 
     def eta(self):
         return self.linpar
 
-    def T(self, y):
+    def _T_canonical(self, y):
         return y
 
     def deviance(self, y, eps=1e-8):
@@ -131,114 +162,8 @@ class PoissonGLM(D.Poisson, GLMMixin):
         return 2 * (y_safe * torch.log(y_safe / mu_safe) - (y_safe - mu_safe))
 
     def __repr__(self):
-        return f"PoissonGLM(linpar={self.linpar})"
-
-
-class PoissonLog1pGLM(PoissonGLM):
-    """
-    Poisson GLM with log link, but using T(y) = log(1+y) as the sufficient
-    statistic in the ZQE estimating equation instead of the canonical T(y) = y.
-
-    This is a valid (non-canonical) choice: the ZQE centring
-
-        E[T(y) * eta(z_q(y))] - E_model[T(yq) * eta(z_q(yq))]
-
-    vanishes at the truth for any measurable T.  With T(y) = log(1+y) the
-    synthetic term is bounded by log(1 + exp(clamp)) * ||linpar||, so
-    gradients stay finite even when the decoder has not yet converged.
-
-    Sampling, log_prob, and eta are unchanged (identical to PoissonGLM).
-    Only zq_log is affected via the overridden T().
-    """
-
-    def T(self, y):
-        return torch.log1p(y.float())
-
-    def __repr__(self):
-        return f"PoissonLog1pGLM(linpar={self.linpar})"
-
-
-class PoissonMixedTGLM(PoissonGLM):
-    """
-    Poisson GLM using T(y) = y + log(1+y) in the ZQE estimating equation.
-
-    This is the equal-weight sum of the canonical (T=y) and the stable
-    (T=log1p) estimating equations:
-
-        [E(y·η) - E_θ(yq·η)]  +  [E(log1p(y)·η) - E_θ(log1p(yq)·η)]  = 0
-
-    Because η does not depend on T, summing the two equations is equivalent
-    to a single equation with T_mix(y) = y + log(1+y).  This recovers the
-    gradient signal of the canonical score (y·η has the right Fisher
-    efficiency) while log1p(y) regularises the centring term against
-    large-count explosions.
-
-    Sampling, log_prob, and eta are unchanged.
-    """
-
-    def T(self, y):
-        y = y.float()
-        return y + torch.log1p(y)
-
-    def __repr__(self):
-        return f"PoissonMixedTGLM(linpar={self.linpar})"
-
-
-class PoissonSqrtGLM(PoissonGLM):
-    """
-    Poisson GLM using T(y) = sqrt(y) in the ZQE estimating equation.
-
-    sqrt is the variance-stabilising transformation for Poisson (delta method:
-    Var[sqrt(Y)] ≈ 1/4).  It compresses large counts more aggressively than
-    log1p, giving a flatter signal across the dynamic range of scRNA-seq data.
-    Unlike T=y it never causes gradient explosion at random decoder init.
-    """
-
-    def T(self, y):
-        return torch.sqrt(y.float().clamp_min(0.0))
-
-    def __repr__(self):
-        return f"PoissonSqrtGLM(linpar={self.linpar})"
-
-
-class PoissonLog1pSqrtGLM(PoissonGLM):
-    """
-    Poisson GLM using T(y) = (log1p(y) + sqrt(y)) / 2.
-
-    Equal-weight average of the two best-performing transforms:
-    log1p for low-count sensitivity and sqrt for variance stabilisation.
-    """
-
-    def T(self, y):
-        y = y.float().clamp_min(0.0)
-        return (torch.log1p(y) + torch.sqrt(y)) / 2.0
-
-    def __repr__(self):
-        return f"PoissonLog1pSqrtGLM(linpar={self.linpar})"
-
-
-class PoissonMultiTGLM(PoissonGLM):
-    """
-    Poisson GLM using T(y) = (1/3)*[log1p(y) + sqrt(y) + y/(1+y)] as a
-    uniform-weight mixture of three bounded/stable transformations.
-
-    Motivation: each transformation captures different aspects of the count
-    distribution:
-      - log1p(y): emphasises low counts, log-compresses high counts
-      - sqrt(y):  variance-stabilising, intermediate compression
-      - y/(1+y):  bounded in [0,1), de-emphasises outlier counts
-
-    All three are bounded/slow-growing so the centring term stays finite.
-    Equal weights keep the mixture scale neutral.  The resulting estimating
-    equation is the average of three individually valid ZQE equations.
-    """
-
-    def T(self, y):
-        y = y.float().clamp_min(0.0)
-        return (torch.log1p(y) + torch.sqrt(y) + y / (1.0 + y)) / 3.0
-
-    def __repr__(self):
-        return f"PoissonMultiTGLM(linpar={self.linpar})"
+        t = "" if self._T_override is None else f", T={getattr(self._T_override, '__name__', 'custom')}"
+        return f"PoissonGLM(linpar={self.linpar}{t})"
 
 
 # ============================================================
@@ -253,9 +178,11 @@ class GammaGLM(D.Gamma, GLMMixin):
     scale = dispersion parameter
     """
 
-    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0,
+                 T: Callable[[torch.Tensor], torch.Tensor] | None = None):
         self.linpar = linpar
         self.scale = torch.as_tensor(scale, device=linpar.device)
+        self._T_override = T
 
         mu = torch.exp(torch.clamp(linpar, max=10.0))
         concentration = 1.0 / self.scale  # shape = alpha
@@ -266,7 +193,7 @@ class GammaGLM(D.Gamma, GLMMixin):
     def eta(self):
         return self.linpar
 
-    def T(self, y):
+    def _T_canonical(self, y):
         return torch.log(y)
 
     def deviance(self, y, eps=1e-8):
@@ -295,9 +222,11 @@ class NegativeBinomialGLM(D.NegativeBinomial, GLMMixin):
     total_count = 1/scale
     """
 
-    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0):
+    def __init__(self, linpar: torch.Tensor, scale: float | torch.Tensor = 1.0,
+                 T: Callable[[torch.Tensor], torch.Tensor] | None = None):
         self.linpar = linpar
         self.scale = torch.as_tensor(scale, device=linpar.device)
+        self._T_override = T
 
         mu = torch.exp(linpar)
         theta = self.scale.clamp_min(1e-8)
@@ -309,7 +238,7 @@ class NegativeBinomialGLM(D.NegativeBinomial, GLMMixin):
     def eta(self):
         return self.linpar
 
-    def T(self, y):
+    def _T_canonical(self, y):
         return y
 
     def deviance(self, y, eps=1e-8):
@@ -348,16 +277,18 @@ class BinomialGLM(D.Binomial, GLMMixin):
         linpar: torch.Tensor,
         total_count: Any = 1,
         scale: float | torch.Tensor = 1.0,
+        T: Callable[[torch.Tensor], torch.Tensor] | None = None,
     ):
         self.linpar = linpar
         self.total_count = torch.as_tensor(total_count, device=linpar.device)
         self.scale = torch.tensor(1.0, device=linpar.device)  # unused
+        self._T_override = T
         super().__init__(total_count=self.total_count, logits=linpar)
 
     def eta(self):
         return self.linpar
 
-    def T(self, y):
+    def _T_canonical(self, y):
         return y
 
     def deviance(self, y, eps=1e-8):

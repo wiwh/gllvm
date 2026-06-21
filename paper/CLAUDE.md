@@ -631,3 +631,142 @@ $$\tilde{z}_m \sim f_Z \text{ (fixed)}, \quad \tilde{y}_m \sim f_{Y|Z}(\cdot \mi
 **L-BFGS does not compute gradients.** It reads `param.grad` filled by `.backward()` inside the closure. It terminates when $\|\nabla_\theta \mathcal{L}_{\mathrm{ZQE}}\| < \texttt{tol}$, i.e., when the estimating equations are satisfied. Feed `-`$\mathcal{L}_{\mathrm{ZQE}}$ if your solver minimizes; or maximize $\mathcal{L}_{\mathrm{ZQE}}$ directly.
 
 **Connection to ELBO.** The ELBO is the first term of $\mathcal{L}_{\mathrm{ZQE}}$ minus a KL penalty. ZQE replaces the KL by the model-expectation centering term (second sum above). The KL keeps $q$ close to the prior; the centering term keeps $\theta$ at the correct population root regardless of $q$.
+
+---
+
+## GP-GLLVM identification: keep $W$ full — do NOT impose lower-triangular (2026-06-21)
+
+For the **GP-GLLVM extension**, the loading identification is fundamentally different from the
+plain GLLVM, and the standard lower-triangular constraint is **wrong** here. This is a gauge
+argument.
+
+**Plain GLLVM** ($z\sim\mathcal N(0,I_q)$): the loadings carry a full $O(q)$ rotation gauge,
+$W \equiv WR$ for $R\in O(q)$ (since $Rz\stackrel{d}{=}z$). A lower-triangular constraint picks one
+representative, and crucially **the truth remains in the constrained family**: exactly one rotation
+lower-triangularises $W^\*$, at zero cost to the fit. The constraint is free and correct. (This is
+the `wz_mask` / `tril` mechanism used in the confirmatory and sparse-loading experiments.)
+
+**GP-GLLVM with distinct per-factor length-scales $\ell_k$:** the rotation gauge is **already
+broken by the kernels**. The latent covariance is
+$\operatorname{Cov}(\eta) = \sum_k w_k w_k^\top K_{\ell_k}(\cdot,\cdot)$; a rotation $R$ mixes
+factors with *different* kernels and therefore *changes* this covariance — it is no longer a
+symmetry. Hence $W$ is identified up to permutation and sign by the kernels themselves (this is the
+classical GPFA fact, "distinct timescales break the rotation"). The consequence for the constraint:
+**there is in general no rotation mapping $W^\*$ into lower-triangular form** (rotations are no
+longer free), so the lower-triangular family **does not contain the truth**. Imposing it is then a
+*misspecification* that biases **both** $W$ and the length-scales $\ell_k$ — the fit distorts $\ell$
+to compensate for the unreachable loadings.
+
+**Rule.** Distinct kernels $\Rightarrow$ **full unconstrained $W$** (the kernels do the
+identifying; the factors *are* their length-scales). Shared/equal kernel $\Rightarrow$ the $O(q)$
+gauge returns $\Rightarrow$ lower-triangular is then the right and free fix (and since the $\ell_k$
+are equal there is no length-scale$\leftrightarrow$factor correspondence to break). The two
+identification schemes are **alternatives, not complements**; the GP-GLLVM's whole contribution is
+distinct per-factor length-scales, so it always uses a full $W$.
+
+**On $B$ (cross-latent correlation).** Keeping $W$ full *is* keeping the freedom: an unconstrained
+$W$ already carries the $W\!\cdot\!\mathrm{chol}(B)$ degree of freedom (the within-observation
+cross-latent structure). We do not separately parameterise $B$ — as a distinct object it is
+non-identified in the standard (shared-kernel) sense, confirmed by the GP-factor-analysis
+literature — but we must not amputate it either. **Full $W$ + $B=I$ + distinct $\ell_k$** is the
+identified, maximally-free model.
+
+**Caveat.** If two factors come out with $\ell$'s that are nearly equal, those two are mutually
+rotation-degenerate (a residual $O(2)$ gauge in that subspace), correctly reflected as high
+variance there — *not* something to "fix" with lower-triangular (which would distort the
+well-separated factors). The relative orthogonal Procrustes metric is rotation-invariant, so
+loading-recovery scores are unaffected regardless.
+
+---
+
+## Paper framing & scope — keep the method general; GP-GLLVM is the flagship (2026-06-21)
+
+**Decision: do NOT rename/pitch the paper around "large-scale GP-GLLVM." Keep the general
+likelihood-free centered-estimation method as the headline, and *promote* the GP-GLLVM-at-scale
+from a buried §Extension to a co-equal, named pillar (the flagship demonstration).**
+
+- **Why general stays the headline (JRSS-B specifically):** B buys methodology + theory. Our ticket
+  is the centered estimating-equation *principle* (Jacobian cancellation, consistency/AN under
+  misspecified surrogates, identification, sandwich inference) — all of which is general across
+  instances. A paper *titled* around GP-GLLVM reads as a model-specific computational method (a
+  weaker B fit — that's AOAS / Biometrics / Bioinformatics turf) and throws away the theory that
+  makes it a B paper.
+- **Why GP-GLLVM must be elevated anyway:** "you don't need a correct encoder" is a *defensive*
+  (robustness/negative) message — the referee worry. The GP-GLLVM at scale is the *offensive*
+  payoff: *"…and therefore you can fit a count-valued, GP-structured latent factor model at
+  $n\to$millions, where VA / Laplace / EM-GPFA cannot run."* It is the **existence proof** that the
+  principle buys something no likelihood method can — it turns the negative result positive.
+- **Recommended spine:** theory → Gaussian-proxy canonical instance → **GP-GLLVM at scale (the
+  "reach" demo) + the Visium figure** → robustness.
+- **Two-paper split (avoid cramming):**
+  - *Paper 1 (JRSS-B, now):* general centered/likelihood-free decoder estimation; GLLVM sims (VAE
+    bias, p-sweep, efficiency–robustness) + GP-GLLVM-at-scale flagship + one clean Visium figure +
+    robustness section. Complete and *general*.
+  - *Paper 2 (applied, later):* GP-GLLVM as a count-native multi-scale spatial feature extractor —
+    the full "GP-PCA" vision and biology. The Visium figure teases P1, headlines P2.
+
+## Encoder choice for the paper — Gaussian MAP canonical; quantile is surgical (2026-06-21)
+
+**Decision: the canonical encoder is the closed-form Gaussian-MAP (log1p). Do NOT make the quantile
+projection mandatory/core.** Deploy the quantile projection only where it pays: (i) the robustness
+construction (calibrated $\hat\mu$ for Pearson-residual Huberization), and (ii) the GP-PCA
+embeddings ($N(0,1)$ channels for downstream).
+
+- **Reasons:** keep the identification proofs / deterministic-objective on the smooth MAP; the
+  quantile's W benefit is modest (the de-shrink is a *scalar that cancels in the centered
+  $m_1-m_2$ equation* — gain is variance/stability, not a 2× mean); making a non-differentiable
+  batch transform mandatory invites "why this machinery?"; and it dilutes the crisp "Gaussian proxy
+  is the canonical instance" pitch.
+- **Empirical (Poisson GLLVM, 20 seeds, paired; `playground/poisson_quantile.ipynb`):** MAP+quantile
+  is the *best* encoder for $W$ — lowest mean (0.075 vs 0.080) and ~half the variance (±0.011 vs
+  ±0.024); the **correct Poisson-Newton MAP is no better** (0.078) despite being calibrated ⇒
+  **encoder fidelity ≠ estimator quality** (score identity). So: cheap MAP + optional quantile.
+- **Negative result — quantile does NOT win on gllvm's turf (simulation_1, 240 reps, `zqe_q` arm).**
+  Overall mean Procrustes: plain `zqe` 0.218 < `zqe_q` 0.250 < `gllvm` 0.300; `zqe_q` beats `zqe`
+  only 36% of reps, `gllvm` only 18%. Sharply **n-dependent**: at **n=20** (gllvm's turf) the
+  rank→N(0,1) projection over so few points *backfires* (−16…−31% vs `zqe`); n=100 a wash; n=500
+  marginal (+0–3%, matches the large-n result). It never closes the gllvm gap where gllvm is
+  healthy; where `zqe_q` "beats" gllvm it's only because gllvm itself blows up (plain `zqe` ties it
+  there). ⇒ Confirms: quantile is for **robustness/embeddings, not W-efficiency**; do not adopt it
+  as a gllvm-turf efficiency lever. (Reinforces the cancel-in-the-centered-equation theory.)
+- Meta: consistency holds for *any* surrogate, so we are not locked in — present MAP as the
+  recommended default and the quantile as a cheap refinement the framework *admits*.
+
+## Robustness / Huberization section plan (2026-06-21)
+
+- **Huberize the Pearson residual** $r=(y-\mu)/\sqrt{V(\mu)}$ (clip $\psi_c$), per GLM family
+  ($\sqrt{V}$ = the scale: Poisson $\sqrt\mu$, etc.). Standardize $\mu$/scale against the **model
+  marginal via the fantasies we already draw** (or via the quantile-calibrated $\hat\mu$) — *not* a
+  crude encoder $\hat\mu$.
+- **Validity:** Huberization is *not* restricted to true scores (Huber/Hampel IF theory is general);
+  "only scores" applies to *optimality* (the OBRE = Huberized-recentered score). The **fantasy
+  centering supplies the Fisher-consistency correction $\mathbb E_\theta[\psi_c]$ for free** — the
+  term Cantoni–Ronchetti (2001, JASA, robust GLM) must derive analytically and which is intractable
+  in latent-variable models. With the **canonical $T$**, our centered equation *is* the score ⇒
+  Huberizing it = the OBRE (optimal); general $T$ ⇒ B-robust + consistent.
+- **Guardrail to state:** apply the *identical bounded map* (encoder **and** clip) to data and
+  fantasies, no-grad — that symmetry is why the Huberized equation stays centered at $\theta_0$.
+- Closest prior art / contrast: Cantoni & Ronchetti (2001); Hampel et al. (1986) for IF/OBRE.
+
+## GP-PCA / fixed-ℓ scale-bank (Paper 2 / Discussion angle) (2026-06-21)
+
+Frame the GP-GLLVM as a **count-native, scale-resolved "GP-PCA"** feature extractor. Distinctive
+output = the **per-factor length-scale spectrum** (no PCA/SpatialPCA/MEFISTO gives it). Built-in
+noise/signal split: factors with $\ell <$ spot pitch are sub-resolution nugget/noise; real programs
+at $\ell \gtrsim$ pitch. **Fixed-ℓ scan:** instead of estimating $\ell$, fix a predefined ℓ grid →
+a deterministic multi-scale filter bank (filters fixed, *what loads* at each scale learned). Fit the
+bank **jointly** ($B{=}I$) so scales compete → complementary channels; quantile-calibrate each →
+clean multi-channel embedding before a neural net. Cites/contrast: wavelets / scattering /
+scale-space (those filter the raw signal; this extracts latent programs per scale on counts);
+SpatialPCA, MEFISTO (Gaussian, $O(n^3)$). Composable (ZQE one-liners): group-lasso on $W$-columns
+→ automatic factor/rank selection; L1 / Huber; confirmatory masks; mixed response families.
+
+**Parked for Paper 2 — scalability in $q$ (deliberately NOT in the main paper; it muddies the
+contribution).** With $B=I$, $\Sigma=\mathrm{blkdiag}(K_1,\dots,K_q)$, so: **generating**
+($z=L_\Sigma\varepsilon$) is exactly per-factor (linear in $q$, machine-exact); the **encoder solve**
+($A=\Sigma^{-1}+(W^\top W/s^2)\otimes I_K$) is factor-*coupled* for distinct $\ell_k$ → use
+prior-preconditioned **CG** (sub-cubic; exact to 1e-12; crossover vs dense $(qK)^3$ at $q\approx16$,
+2.5× at $q{=}32$ and widening; a block-Jacobi preconditioner lowers the crossover). *Shared*-kernel
+case → exact Kronecker eigentrick (no CG). Verified prototype:
+`playground/gp-gllvm/_blockscale_verify.py`. For the main paper, dense is fine at the $q\le12$ we use;
+this only matters at large $q$ → Paper 2.

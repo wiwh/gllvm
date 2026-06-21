@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from gllvm.glm_fit import initial_gaussian_fit, poisson_newton_batch
+from gllvm.glm_fit import initial_gaussian_fit, poisson_newton_batch, bernoulli_newton_batch
 
 
 class Encoder(nn.Module):
@@ -275,6 +275,65 @@ class MapEncoderPoissonNewton(nn.Module):
                 max_halvings=self.max_halvings, tol=self.tol, verbose=False,
             )
         return B_hat.T.contiguous()   # (batch, q)
+
+    def sample(self, y):
+        """Drop-in for Encoder.sample() — deterministic delta-mass surrogate."""
+        z = self.forward(y)
+        return z, z, torch.full_like(z, float("-inf"))
+
+    def loss(self, y, gllvm=None, **kwargs):
+        """No parameters to optimise — return a zero loss."""
+        dummy = next(self.gllvm.parameters())
+        return torch.zeros(1, device=dummy.device, requires_grad=True), 0.0
+
+
+class MapEncoderBernoulliNewton(nn.Module):
+    """
+    Parameter-free exact Bernoulli MAP encoder via batched Newton/IRLS.
+
+    Solves, for each observation y_i (binary):
+
+        z* = argmax_z { sum_j [y_ij * eta_j(z) - softplus(eta_j(z))] - (lam/2) ||z||^2 }
+
+    where eta_j(z) = w_j^T z + b_j (logit link), using
+    ``glm_fit.bernoulli_newton_batch``.  This is the binary analogue of
+    ``MapEncoderPoissonNewton``: the proper logit posterior mode, far better
+    conditioned than the ``±2`` Gaussian-proxy at small n.
+
+    Parameters
+    ----------
+    gllvm    : GLLVM  — live reference; always uses the current W, b.
+    lam      : float  — prior precision (matches N(0, I) at lam=1).
+    max_iter : int    — Newton iterations.
+    tol      : float  — convergence tolerance on relative ||Δz||.
+    """
+
+    def __init__(self, gllvm, lam: float = 1.0, max_iter: int = 30,
+                 max_halvings: int = 10, tol: float = 1e-6):
+        super().__init__()
+        self.gllvm = gllvm
+        self.lam = lam
+        self.max_iter = max_iter
+        self.max_halvings = max_halvings
+        self.tol = tol
+
+    def forward(self, y):
+        W = self.gllvm.wz.detach()                       # (p, q)
+        b = (self.gllvm.bias.detach()
+             if self.gllvm.bias is not None
+             else torch.zeros(W.shape[0], device=W.device, dtype=W.dtype))
+
+        Y_t = y.float().T.contiguous()                   # (p, batch)
+        offset = b.unsqueeze(1).expand_as(Y_t)           # (p, batch)
+        B0 = torch.zeros(W.shape[1], Y_t.shape[1], device=W.device, dtype=W.dtype)
+
+        with torch.no_grad():
+            B_hat, _ = bernoulli_newton_batch(
+                X=W, Y=Y_t, B0=B0, offset=offset,
+                lam=self.lam, max_iter=self.max_iter,
+                max_halvings=self.max_halvings, tol=self.tol, verbose=False,
+            )
+        return B_hat.T.contiguous()                       # (batch, q)
 
     def sample(self, y):
         """Drop-in for Encoder.sample() — deterministic delta-mass surrogate."""

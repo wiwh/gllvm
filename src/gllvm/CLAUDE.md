@@ -57,6 +57,81 @@ Experimental, not used in current simulations.
 
 ---
 
+## autofit.py  ← recommended ZQE entry point
+
+### `ZQEAutoFitter(gllvm, *, encoder_factory=None, ...)`
+Automatic ZQE fitter.  Family-agnostic: only uses `gllvm.sample`, `gllvm.zq_log`, and a
+parameter-free `encoder.sample` (default `MapEncoderGaussianLog1p`).
+
+Recipe (single chain — **no heads**; the old multi-head/consensus design was removed because it
+risks OOM, scales poorly, and its cross-head spread is *algorithmic* noise, not a standard error):
+1. **Warm-up (Adam)** on the decoder, LR annealed by `ReduceLROnPlateau` on per-epoch grad-norm;
+   exits at the LR floor (`warmup_min_lr`).
+2. **Refine (SGD + Ruppert–Polyak)**: one chain whose LR **decays within the chain**
+   (`lr_k = refine_lr / (1+k)**refine_lr_power`, `power=0.5` classic; `0` → constant) with a
+   Polyak tail average (uniform by default; EMA if `ema_decay` set).  Decreasing LR + tail
+   averaging is the √n-optimal estimator and removes the O(lr) noise floor *at its source*
+   (the variance-reduction step).
+3. **Sequential-restart check**: each round warm-restarts the chain from the current Polyak
+   estimate at a **decayed** LR (`refine_lr * refine_lr_decay**round`); `change_ =
+   procrustes_error(prev, new)` (O(q)-aligned) measures how far it moved.  `change_ < tol` →
+   converged.  Annealing matters: constant-LR Polyak has an **O(lr) residual noise floor**, so
+   without decay the restart change can't fall below ~lr and never reaches `tol` (this is the
+   fix for fits that "stop" instead of converging).  Watch `lr·‖avg ∇W‖/‖W‖` (the iterate's
+   per-step drift) shrink alongside `change_`.
+
+Also exports `procrustes_error(W_true, W_est)` (relative orthogonal Procrustes error, the
+project's loadings metric; accepts numpy **or** torch, so it compares a `GLLVM.wz` against R's
+loadings) and `orthogonal_align(ref, W)` (the underlying O(q) rotation).
+
+Outputs: `.model` (Polyak-averaged `GLLVM`), `.change_` (Procrustes change at the last restart),
+`.grad_norm_` (‖tail-avg ∇W‖/‖W‖ over the Polyak window — the empirical estimating equation; ≈0
+at a root, a stationarity check distinct from the objective *value*), `.avg_grad_wz_` ((p,q)
+tail-averaged loading gradient), `.converged_`, `.n_rounds_used_`, `.y_` (data, for post-hoc
+deviance), `.history`.  **The estimate is the Polyak average** (`AveragedModel.module`, the tail
+mean — *not* the last iterate); Procrustes and every diagnostic read it.  Simple knobs:
+`warmup_lr`, `refine_lr`, `refine_lr_power` (within-chain Ruppert–Polyak decay exponent),
+`refine_lr_decay` (base-LR multiplier *between* restarts; both annealings turn "stopped" into
+"converged"), `steps_per_round`, `max_rounds`, `tol`, `warmup_optimizer`/`refine_optimizer`
+(str key or optimiser class).  History adds `refine_lr` (per-step within-chain schedule, plotted
+by `plot_lr`); `round_lr` is the tail-mean (effective) LR used for the `lr·grad` drift.
+
+`.history` is rich enough to *replay* the fit (consumed by `diagnostics.py`): per warm-up epoch
+`warmup_loss/gnorm/lr/wz/bias`; per restart `round_change/lr/grad_norm`, `refine_loss/gnorm`
+((steps,) per-step traces — so the objective can be seen fluctuating about 0), and `round_wz/bias`
+Polyak snapshots.
+
+---
+
+## diagnostics.py  ← plots that *show* the fit behaving
+
+Functions take a fitted `ZQEAutoFitter` and read `.history`; nothing re-runs the fit.  Each
+accepts an optional `ax`.  `plot_objective` is the headline check — the ZQE loss `-(m1-m2)` is
+the negated empirical estimating equation, so it must **fluctuate about 0** at convergence (a
+biased optimiser sits off-zero).  `plot_grad_balance` is the parameter-space twin: the
+tail-averaged loading gradient (≈0 for most loadings at a root — instantaneous `plot_gradnorm`
+stays noisy, but the *average* cancels to ≈0).  Also `plot_lr`, `plot_gradnorm`, `plot_convergence`
+(per-restart Procrustes change, `grad_norm`, **and** `lr·grad_norm` = the iterate's per-step
+drift, vs `tol`), `plot_params` (random-loading
+trajectories, rotation-aligned to a common gauge; pass `g_true` for dashed true-value targets),
+`plot_deviance` (Poisson deviance/obs, recomputed post-hoc from snapshots — assumes log-link
+Poisson), and `plot_diagnostics` (2×4 dashboard).  Imports matplotlib, so it is **not**
+re-exported from `gllvm/__init__.py`; use `from gllvm import diagnostics`.
+
+---
+
+## r_gllvm.py  ← R `gllvm` baseline wrapper
+
+### `RGllvm(rscript=..., workdir=..., method="VA", family="poisson", maxit=2000, ...)`
+Thin Python wrapper around R's `gllvm::gllvm()` (Niku et al.), run via `Rscript` in a
+subprocess with CSV exchange.  `RGllvm(...).fit(Y, num_lv) -> RGllvmFit` with `.loadings` (p,q)
+= `theta` scaled by `sigma.lv`, directly comparable to a Python `GLLVM.wz`.  `.available()`
+checks the `Rscript` path before calling.  Defaults target WSL2→Windows R (`/mnt/c/...`,
+auto-translated to `C:/...`); for a native install pass `rscript="Rscript"` and any writable
+`workdir`.  Replaces the ad-hoc `run_r_gllvm()` helper that used to live in the notebooks.
+
+---
+
 ## gllvm_module.py
 
 ### `GLLVM(latent_dim, output_dim, feature_dim=0, bias=True)`
@@ -84,12 +159,17 @@ All classes inherit from both `torch.distributions.*` and `GLMMixin`.
 
 Critical interface (GLMMixin):
 - `.eta()` → natural parameter (= linpar for log-link)
-- `.T(y)` → sufficient statistic
+- `._T_canonical(y)` → family canonical statistic (abstract; `y` for Poisson, `log(y)` for Gamma)
+- `.T(y)` → returns the `T=` override if passed to `__init__`, else `_T_canonical(y)`
 - `.zq_log(y)` → `T(y) * eta()` — used by `GLLVM.zq_log()`
 
-**`PoissonLog1pGLM`**: only overrides `T(y) = log1p(y.float())`.  Sampling and log_prob are
-**unchanged** (uses canonical Poisson).  This is intentional: the ZQE only changes the
-estimating function T, not the generative model.
+**Configurable T**: pass any callable as `PoissonGLM(linpar, T=torch.log1p)`.  Persist it on a
+model via `add_glm(PoissonGLM, idx=..., params={"T": torch.log1p})` (the override is stored in
+`GLMFamily.params` and survives the transient re-instantiation in `forward`/`sample`/`zq_log`,
+and `deepcopy`/`AveragedModel`).  Sampling and log_prob are **unchanged** by T — the ZQE only
+changes the estimating function, not the generative model.  The old subclass-per-T zoo
+(`PoissonLog1pGLM`, `PoissonSqrtGLM`, `PoissonMixedTGLM`, `PoissonLog1pSqrtGLM`,
+`PoissonMultiTGLM`) was removed; re-express as `T=<callable>`.
 
 ---
 
