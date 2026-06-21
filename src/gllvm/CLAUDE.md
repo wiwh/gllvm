@@ -198,3 +198,54 @@ Returns `(y, z)` from the generative model.
 5. **NaN from random decoder**: when `wz` is randomly initialised, `exp(Wz+b)` can overflow
    for large |z|.  `PoissonGLM` clamps linpar at 10 (`exp(10)≈22k`).  Still, `y_q` can be
    large.  `T=log1p` avoids explosion in the centring term; canonical `T=y` does not.
+
+---
+
+## kernels.py  ← GP-GLLVM latent covariance
+
+### `Kernel` / `RBFKernel(latent_dim, lengthscale=1.0, jitter=1e-4)`
+Per-factor covariance for the GP-GLLVM latent prior.  Because the factors are
+**independent (`B = I`)**, the latent covariance is **block-diagonal**: a kernel maps
+coordinates `(*batch, K, d)` to the `q` per-factor blocks `(*batch, q, K, K)` via
+`.blocks(coords)`, with `.cholesky(coords)` derived.  `RBFKernel` is squared-exponential
+with a **per-factor** length-scale `ell_k` (stored as `log_lengthscale`, a `Parameter`);
+distinct `ell_k` are what break the rotation gauge and identify the loadings.
+
+## gpgllvm.py  ← GP-GLLVM model + encoder + fitter
+
+### `GPGLLVM(latent_dim, output_dim, *, input_dim=1, kernel=None, lengthscale=1.0, jitter=1e-4, …)`
+**Subclasses `GLLVM`** — same decoder (`add_glm`, `forward`, `log_prob`, `zq_log`, families),
+but the latent prior is a per-factor GP over coordinates instead of i.i.d. `N(0,I)`.
+Defaults to `float64` (Cholesky stability).  Key methods:
+- `.sample_z(coords)` → GP draw `(*batch, K, q)`, exact per-factor (`z[...,k]=L_k ε_k`).
+  (Overrides `GLLVM.sample_z(num_samples)` — the GP prior needs coordinates.)
+- `.sample(coords=…, z=…, offset=…)`, `.forward(z, x, offset=…)` — **offset** is a known
+  additive term in η (e.g. log library size), broadcast over responses.
+- `.whiten(z, coords)` = `L_Σ⁻¹ z`; `.cov(coords)` = block-diagonal `Σ` `(*batch, qK, qK)`;
+  `.lengthscale` property.
+- Works for any leading batch shape (patches), `input_dim` 1 (time) or 2 (space) or more.
+
+### `GPMapEncoder(gpgllvm, sigma2=1.0)`
+Parameter-free **joint block-MAP** imputer under the Gaussian-`log1p` proxy: solves
+`(Σ⁻¹ + (WᵀW/σ²)⊗I_K) vec(z) = vec((log1p(y)-b-offset)W/σ²)`.  `Σ⁻¹` built per factor
+(block-diagonal); `.sample(y, coords, offset)` → `(ẑ, ẑ, -inf)` (δ-mass, detached by the
+fitter via the score-function identity).  **Must encode the whole K-block jointly** — the
+joint prior is what makes the imputed `ẑ` carry the kernel structure the ℓ-fit needs.
+
+### `GPZQEFitter(model, *, encoder=None, K=64, steps=2000, lr=0.03, batch=128, warmup=200, fit_lengthscale=True, cov_batch=32, …)`
+Likelihood-free ZQE fitter.  `.fit(y, coords, groups=None, offset=None)` →
+`self` (`self.model` fitted in place; `.history`, `.lengthscales_`, `.fit_time_`).
+Each step samples a random **K-subset of each group** (GP marginal theorem → every op is
+`K×K`, cost independent of group size) and minimises
+`-(m1-m2)` (centered loadings, per-obs) **+** a fantasy-centered second-moment term
+`‖Σ(ℓ) − E[ẑẑᵀ]‖²` per patch (the cross-observation moment that identifies ℓ).
+`warmup` steps fit loadings only; `fit_lengthscale=False` freezes ℓ (e.g. a fixed-ℓ scan).
+`W` is kept **full** (distinct ℓ_k identify it — no lower-tri; see `paper/CLAUDE.md`).
+Verified: synthetic recovery ℓ̂≈[0.96,3.11] for true [1,3], procW≈0.05 over seeds
+(`playground/gp-gllvm/_verify_gpgllvm_api.py`).
+
+**GP gotchas.**  (a) Use the default `float64`; `float32` Cholesky is fragile with small
+`jitter`.  (b) `K` is capped to the smallest group size.  (c) `cov_batch` bounds the
+second-moment term's memory (`O(cov_batch·(qK)²)`); lower it for large `q`.  (d) The encoder
+solve is dense in `qK` — fine for the `q` we use; the block-diag/CG large-`q` variant is
+deliberately deferred (Paper 2, prototype `playground/gp-gllvm/_blockscale_verify.py`).
