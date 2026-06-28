@@ -76,12 +76,12 @@ def orthogonal_align(ref: torch.Tensor, W: torch.Tensor) -> torch.Tensor:
     ``||ref - W @ R||_F``.  This is the loadings' O(q) gauge freedom:
     ``W`` and ``W @ R`` describe the same model when ``z ~ N(0, I)``.
     """
-    M = ref.T @ W                                  # (q, q)
+    M = ref.T @ W  # (q, q)
     U, _, Vt = torch.linalg.svd(M)
-    R1 = (U @ Vt).T                                # proper rotation
+    R1 = (U @ Vt).T  # proper rotation
     D = torch.eye(U.shape[0], device=ref.device, dtype=ref.dtype)
     D[-1, -1] = -1.0
-    R2 = (U @ D @ Vt).T                            # reflection alternative
+    R2 = (U @ D @ Vt).T  # reflection alternative
     e1 = torch.linalg.norm(ref - W @ R1)
     e2 = torch.linalg.norm(ref - W @ R2)
     return R1 if e1 <= e2 else R2
@@ -96,6 +96,7 @@ def procrustes_error(W_true, W_est) -> float:
     (reflections allowed).  Accepts numpy arrays or torch tensors for either
     argument, so it can compare a Python ``GLLVM.wz`` against R's loadings.
     """
+
     def _to64(M):
         if isinstance(M, torch.Tensor):
             return M.detach().to("cpu", torch.float64)
@@ -190,6 +191,10 @@ class ZQEAutoFitter:
         gllvm,
         *,
         encoder_factory: Optional[Callable] = None,
+        weight_fn: Optional[Callable] = None,
+        weight_warmup: bool = False,
+        feature_batch: Optional[int] = None,
+        l2: float = 0.0,
         device: str = "cpu",
         # data / sampling
         batch_size: Optional[int] = None,
@@ -217,10 +222,32 @@ class ZQEAutoFitter:
         grad_clip: float = 5.0,
         seed: Optional[int] = None,
         verbose: bool = True,
+        store_wz_trace: bool = True,
     ):
         self.gllvm = gllvm.to(device)
         self.device = device
         self.encoder_factory = encoder_factory or (lambda g: MapEncoderGaussianLog1p(g))
+        # Optional per-observation weights ``weight_fn(gllvm, y) -> (n, p)`` applied to
+        # BOTH the data term m1 and the model-fantasy term m2 (computed no-grad,
+        # detached; the *same* map on both — so the centered equation stays
+        # Fisher-consistent).  Enables robust (e.g. Pearson-Huber) ZQE.  ``None`` →
+        # standard unweighted ZQE.  By default weights act only in the *refine* phase
+        # (``weight_warmup=False``): robust M-estimation needs a consistent start, and
+        # weighting a random-init warm-up collapses it (garbage μ → all residuals huge
+        # → all weights ≈ 0).  Set ``weight_warmup=True`` to weight the warm-up too.
+        self.weight_fn = weight_fn
+        self.weight_warmup = weight_warmup
+        self._weight_active = True  # toggled per phase in _warmup/_refine
+        # Response (feature) sub-sampling: each step uses a random subset of
+        # ``feature_batch`` of the p responses (encoder + statistic + fantasies all on
+        # the subset), so the per-step *data* cost is O(batch·feature_batch·q),
+        # independent of p.  Enables fitting GLLVMs at p in the tens/hundreds of
+        # thousands.  ``None`` → use all responses.
+        self.feature_batch = feature_batch
+        # Under feature sub-sampling the (p×q) loadings are large; skip the O(p)
+        # per-step parameter snapshots/gradient clones used only by the diagnostics.
+        self.track_params = feature_batch is None and store_wz_trace
+        self.l2 = l2  # optional ridge penalty λ·‖W‖²_F added to the loss (0 = off)
 
         self.batch_size = batch_size
         self.sim_factor = sim_factor
@@ -249,20 +276,30 @@ class ZQEAutoFitter:
         self.verbose = verbose
 
         # ---- results (filled by fit) ----
-        self.model: Optional["torch.nn.Module"] = None   # Polyak-averaged estimate
-        self.change_: float = float("nan")                # Procrustes change at last restart
-        self.grad_norm_: float = float("nan")             # ||tail-avg ∇W|| / ||W|| (≈0 at root)
-        self.avg_grad_wz_: Optional[torch.Tensor] = None  # (p,q) tail-averaged loading gradient
+        self.model: Optional["torch.nn.Module"] = None  # Polyak-averaged estimate
+        self.change_: float = float("nan")  # Procrustes change at last restart
+        self.grad_norm_: float = float("nan")  # ||tail-avg ∇W|| / ||W|| (≈0 at root)
+        self.avg_grad_wz_: Optional[torch.Tensor] = (
+            None  # (p,q) tail-averaged loading gradient
+        )
         self.converged_: bool = False
         self.n_rounds_used_: int = 0
-        self.y_: Optional[torch.Tensor] = None            # data (for post-hoc deviance)
+        self.y_: Optional[torch.Tensor] = None  # data (for post-hoc deviance)
         self.history = {
-            "warmup_loss": [], "warmup_gnorm": [], "warmup_lr": [],
-            "warmup_wz": [], "warmup_bias": [],            # per-epoch param snapshots
-            "round_change": [], "round_lr": [], "round_grad_norm": [],
-            "refine_loss": [], "refine_gnorm": [], "refine_lr": [],   # per restart: (steps,) arrays
-            "refine_wz": [],                               # per restart: list of per-step raw-iterate (p,q) snapshots
-            "round_wz": [], "round_bias": [],              # per-restart Polyak snapshots
+            "warmup_loss": [],
+            "warmup_gnorm": [],
+            "warmup_lr": [],
+            "warmup_wz": [],
+            "warmup_bias": [],  # per-epoch param snapshots
+            "round_change": [],
+            "round_lr": [],
+            "round_grad_norm": [],
+            "refine_loss": [],
+            "refine_gnorm": [],
+            "refine_lr": [],  # per restart: (steps,) arrays
+            "refine_wz": [],  # per restart: list of per-step raw-iterate (p,q) snapshots
+            "round_wz": [],
+            "round_bias": [],  # per-restart Polyak snapshots
         }
 
     # ------------------------------------------------------------------
@@ -275,18 +312,47 @@ class ZQEAutoFitter:
         loading gradient ∂loss/∂W (the estimating function in loadings space),
         so its tail average can be tracked as a stationarity check.
         """
+        fb = self.feature_batch
+        subsample = fb is not None and fb < gllvm.p
         with torch.no_grad():
-            yq = gllvm.sample(z=gllvm.sample_z(n_sim))
-            z, _, _ = encoder.sample(y_batch)          # detached: score-fn identity
-            z_q, _, _ = encoder.sample(yq)
+            if subsample:  # random subset of responses (cost O(fb), not O(p))
+                cols = torch.randperm(gllvm.p, device=self.device)[:fb]
+                yq = gllvm.sample_features(gllvm.sample_z(n_sim), cols=cols)
+                yb = y_batch[:, cols]
+                z, _, _ = encoder.sample(yb, cols=cols)  # detached: score-fn identity
+                z_q, _, _ = encoder.sample(yq, cols=cols)
+            else:
+                cols = None
+                yq = gllvm.sample(z=gllvm.sample_z(n_sim))
+                yb = y_batch
+                z, _, _ = encoder.sample(y_batch)
+                z_q, _, _ = encoder.sample(yq)
 
-        m1 = gllvm.zq_log(y_batch, z=z).sum(-1).mean()
-        m2 = gllvm.zq_log(yq, z=z_q).sum(-1).mean()
+        if subsample:
+            zq1 = gllvm.zq_log_block(yb, z, cols=cols)
+            zq2 = gllvm.zq_log_block(yq, z_q, cols=cols)
+        else:
+            zq1 = gllvm.zq_log(yb, z=z)
+            zq2 = gllvm.zq_log(yq, z=z_q)
+
+        if (
+            self.weight_fn is not None and self._weight_active and not subsample
+        ):  # robust ZQE
+            with torch.no_grad():
+                w1 = self.weight_fn(gllvm, yb)  # (n,p) — same map applied to data...
+                w2 = self.weight_fn(gllvm, yq)  # ...and fantasies (Fisher-consistency)
+            zq1, zq2 = w1 * zq1, w2 * zq2
+
+        m1 = zq1.sum(-1).mean()
+        m2 = zq2.sum(-1).mean()
         loss = -(m1 - m2)
+        if self.l2:  # optional ridge on the loadings
+            loss = loss + self.l2 * (gllvm.wz**2).sum() / gllvm.p / gllvm.q
 
         opt.zero_grad()
         loss.backward()
-        wz_grad = gllvm.wz.grad.detach().clone()       # before clipping = true gradient
+        # the (p×q) gradient clone is O(p); skip it under feature sub-sampling
+        wz_grad = None if subsample else gllvm.wz.grad.detach().clone()
         gn = torch.nn.utils.clip_grad_norm_(gllvm.parameters(), self.grad_clip).item()
         if torch.isfinite(loss):
             opt.step()
@@ -300,11 +366,16 @@ class ZQEAutoFitter:
         perm = torch.randperm(n, device=self.device)
         losses, gns, grads = [], [], []
         for s in range(0, n, bs):
-            yb = y[perm[s:s + bs]]
+            yb = y[perm[s : s + bs]]
             ns = max(1, round(self.sim_factor * len(yb)))
             l, g, wzg = self._zqe_step(gllvm, encoder, opt, yb, ns)
-            losses.append(l); gns.append(g); grads.append(wzg)
-        return float(np.mean(losses)), float(np.mean(gns)), torch.stack(grads).mean(0)
+            losses.append(l)
+            gns.append(g)
+            grads.append(wzg)
+        grad_mean = (
+            None if any(gr is None for gr in grads) else torch.stack(grads).mean(0)
+        )
+        return float(np.mean(losses)), float(np.mean(gns)), grad_mean
 
     # ------------------------------------------------------------------
     # Phase 1 — warm-up
@@ -312,15 +383,23 @@ class ZQEAutoFitter:
     def _warmup(self, y, bs, n_sim):
         g = self.gllvm
         enc = self.encoder_factory(g)
+        self._weight_active = (
+            self.weight_warmup
+        )  # unweighted start by default (robust M-est)
         opt = _make_opt(self.warmup_optimizer, g.parameters(), self.warmup_lr)
         sched = optim.lr_scheduler.ReduceLROnPlateau(
-            opt, mode="min", factor=self.warmup_factor,
-            patience=self.warmup_patience, threshold=self.warmup_threshold,
+            opt,
+            mode="min",
+            factor=self.warmup_factor,
+            patience=self.warmup_patience,
+            threshold=self.warmup_threshold,
             min_lr=self.warmup_min_lr,
         )
         if self.verbose:
-            print(f"[warm-up] {self.warmup_optimizer} lr={self.warmup_lr} "
-                  f"(exit at lr≤{self.warmup_min_lr})")
+            print(
+                f"[warm-up] {self.warmup_optimizer} lr={self.warmup_lr} "
+                f"(exit at lr≤{self.warmup_min_lr})"
+            )
         for ep in range(self.warmup_max_epochs):
             loss, gn, _ = self._epoch(g, enc, opt, y, bs, n_sim)
             sched.step(gn)
@@ -328,9 +407,11 @@ class ZQEAutoFitter:
             self.history["warmup_loss"].append(loss)
             self.history["warmup_gnorm"].append(gn)
             self.history["warmup_lr"].append(lr)
-            self.history["warmup_wz"].append(g.wz.detach().cpu().clone())
-            self.history["warmup_bias"].append(
-                None if g.bias is None else g.bias.detach().cpu().clone())
+            if self.track_params:
+                self.history["warmup_wz"].append(g.wz.detach().cpu().clone())
+                self.history["warmup_bias"].append(
+                    None if g.bias is None else g.bias.detach().cpu().clone()
+                )
             if self.verbose and (ep + 1) % 100 == 0:
                 print(f"  ep {ep+1:4d}  loss={loss:+.4f}  gnorm={gn:.4f}  lr={lr:.2e}")
             if lr <= self.warmup_min_lr * 1.0001 and ep >= self.warmup_patience:
@@ -359,7 +440,7 @@ class ZQEAutoFitter:
         if self.ema_decay is not None:
             d = float(self.ema_decay)
             avg_fn = lambda avg, cur, n: d * avg + (1.0 - d) * cur
-        ema = AveragedModel(g, avg_fn=avg_fn)        # default avg_fn = uniform mean
+        ema = AveragedModel(g, avg_fn=avg_fn)  # default avg_fn = uniform mean
 
         n_sim = max(1, round(self.sim_factor * min(bs, len(y))))
         K = self.steps_per_round
@@ -367,48 +448,67 @@ class ZQEAutoFitter:
         # within-chain Ruppert–Polyak schedule: lr_k = lr / (1+k)^power (power=0 → constant).
         lr_sched = lr / np.power(1.0 + np.arange(K), self.refine_lr_power)
         losses, gnorms = [], []
-        gbar = torch.zeros_like(g.wz); gcount = 0        # tail-averaged ∇W (Polyak window)
-        wz_trace = []                                      # raw SGD iterate per step (for diagnostics)
+        gbar = torch.zeros_like(g.wz)
+        gcount = 0  # tail-averaged ∇W (Polyak window)
+        wz_trace = []  # raw SGD iterate per step (for diagnostics)
         for k in range(K):
             for pg in opt.param_groups:
                 pg["lr"] = float(lr_sched[k])
             l, gnorm, wzg = self._epoch(g, enc, opt, y, bs, n_sim)
-            losses.append(l); gnorms.append(gnorm)
-            wz_trace.append(g.wz.detach().cpu().clone())  # raw iterate (before Polyak average)
+            losses.append(l)
+            gnorms.append(gnorm)
+            if self.track_params:
+                wz_trace.append(
+                    g.wz.detach().cpu().clone()
+                )  # raw iterate (before Polyak average)
             if k >= start:
                 ema.update_parameters(g)
-                if torch.isfinite(wzg).all():
-                    gbar += wzg; gcount += 1
+                if wzg is not None and torch.isfinite(wzg).all():
+                    gbar += wzg
+                    gcount += 1
         gbar = (gbar / max(1, gcount)).detach()
-        return ema.module, np.asarray(losses), np.asarray(gnorms), gbar, lr_sched, wz_trace
+        return (
+            ema.module,
+            np.asarray(losses),
+            np.asarray(gnorms),
+            gbar,
+            lr_sched,
+            wz_trace,
+        )
 
     def _refine(self, y, bs):
         """Single chain, warm-restarted each round at a decayed LR; converge when
         the Polyak estimate stops moving (Procrustes-aligned change < tol)."""
-        est = copy.deepcopy(self.gllvm).to(self.device)   # start = warm-up result
+        self._weight_active = True  # robust weights on for the refine chain
+        est = copy.deepcopy(self.gllvm).to(self.device)  # start = warm-up result
         lr = self.refine_lr
 
         start = int(self.polyak_warmup_frac * self.steps_per_round)
         for rnd in range(self.max_rounds):
-            new, losses, gnorms, gbar, lr_sched, wz_trace = self._run_chain(est, y, bs, lr)
+            new, losses, gnorms, gbar, lr_sched, wz_trace = self._run_chain(
+                est, y, bs, lr
+            )
 
             # restart stability: how far did the (gauge-aligned) Polyak estimate move?
             change = float("nan") if rnd == 0 else procrustes_error(est.wz, new.wz)
             grad_norm = float(gbar.norm() / (new.wz.detach().norm() + 1e-12))
-            lr_eff = float(lr_sched[start:].mean() if len(lr_sched) > start
-                           else lr_sched.mean())         # mean LR over the averaged tail
-            drift = lr_eff * grad_norm                   # per-step drift of the iterate
+            lr_eff = float(
+                lr_sched[start:].mean() if len(lr_sched) > start else lr_sched.mean()
+            )  # mean LR over the averaged tail
+            drift = lr_eff * grad_norm  # per-step drift of the iterate
 
             self.history["round_change"].append(change)
-            self.history["round_lr"].append(lr_eff)      # effective (tail-mean) LR
-            self.history["refine_lr"].append(lr_sched)   # per-step within-chain schedule
+            self.history["round_lr"].append(lr_eff)  # effective (tail-mean) LR
+            self.history["refine_lr"].append(lr_sched)  # per-step within-chain schedule
             self.history["round_grad_norm"].append(grad_norm)
-            self.history["refine_wz"].append(wz_trace)               # list of per-step (p,q) tensors
-            self.history["refine_loss"].append(losses)               # (steps,)
+            self.history["refine_wz"].append(wz_trace)  # list of per-step (p,q) tensors
+            self.history["refine_loss"].append(losses)  # (steps,)
             self.history["refine_gnorm"].append(gnorms)
-            self.history["round_wz"].append(new.wz.detach().cpu().clone())
-            self.history["round_bias"].append(
-                None if new.bias is None else new.bias.detach().cpu().clone())
+            if self.track_params:
+                self.history["round_wz"].append(new.wz.detach().cpu().clone())
+                self.history["round_bias"].append(
+                    None if new.bias is None else new.bias.detach().cpu().clone()
+                )
 
             self.model = new
             self.change_ = change
@@ -417,21 +517,27 @@ class ZQEAutoFitter:
             self.n_rounds_used_ = rnd + 1
             if self.verbose:
                 ch = "—" if change != change else f"{change:.4f}"
-                print(f"[refine] restart {rnd+1}/{self.max_rounds}  change={ch}  "
-                      f"|avg∇W|/|W|={grad_norm:.4f}  lr·|avg∇W|/|W|={drift:.2e}  "
-                      f"lr0={lr:.2e} lr_eff={lr_eff:.2e}  (tol={self.tol})")
+                print(
+                    f"[refine] restart {rnd+1}/{self.max_rounds}  change={ch}  "
+                    f"|avg∇W|/|W|={grad_norm:.4f}  lr·|avg∇W|/|W|={drift:.2e}  "
+                    f"lr0={lr:.2e} lr_eff={lr_eff:.2e}  (tol={self.tol})"
+                )
 
-            est = new                                    # warm-restart from current estimate
+            est = new  # warm-restart from current estimate
             if rnd >= 1 and change < self.tol:
                 self.converged_ = True
                 if self.verbose:
-                    print(f"  ✓ converged (restart change {change:.4f} < tol {self.tol})")
+                    print(
+                        f"  ✓ converged (restart change {change:.4f} < tol {self.tol})"
+                    )
                 break
-            lr *= self.refine_lr_decay                   # anneal base LR between restarts too
+            lr *= self.refine_lr_decay  # anneal base LR between restarts too
 
         if self.verbose and not self.converged_:
-            print(f"[refine] stopped at max_rounds={self.max_rounds} "
-                  f"(change={self.change_:.4f})")
+            print(
+                f"[refine] stopped at max_rounds={self.max_rounds} "
+                f"(change={self.change_:.4f})"
+            )
 
     # ------------------------------------------------------------------
     # public API
@@ -441,7 +547,7 @@ class ZQEAutoFitter:
         if self.seed is not None:
             torch.manual_seed(self.seed)
         y = y.to(self.device)
-        self.y_ = y                                  # kept for post-hoc deviance plots
+        self.y_ = y  # kept for post-hoc deviance plots
         bs = len(y) if self.batch_size is None else int(self.batch_size)
         n_sim = max(1, round(self.sim_factor * min(bs, len(y))))
 

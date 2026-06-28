@@ -143,7 +143,11 @@ class PoissonGLM(D.Poisson, GLMMixin):
         self.linpar = linpar
         self.scale = torch.tensor(1.0, device=linpar.device)
         self._T_override = T
-        rate = torch.exp(linpar)
+        # clamp the log-rate before exp so the Poisson rate cannot overflow to inf/nan
+        # (large random loadings or high latent dimension q can blow up eta).  eta()
+        # returns the *unclamped* linpar, so the ZQE statistic T(y)*eta is unaffected;
+        # only the generative rate / log_prob see the clamp.
+        rate = torch.exp(torch.clamp(linpar, max=20.0))
         super().__init__(rate=rate)
 
     def eta(self):

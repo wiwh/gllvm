@@ -122,7 +122,7 @@ re-exported from `gllvm/__init__.py`; use `from gllvm import diagnostics`.
 
 ## r_gllvm.py  ← R `gllvm` baseline wrapper
 
-### `RGllvm(rscript=..., workdir=..., method="VA", family="poisson", maxit=2000, ...)`
+### `RGllvm(rscript=..., workdir=..., method="VA", family="poisson", maxit=6000, ...)`
 Thin Python wrapper around R's `gllvm::gllvm()` (Niku et al.), run via `Rscript` in a
 subprocess with CSV exchange.  `RGllvm(...).fit(Y, num_lv) -> RGllvmFit` with `.loadings` (p,q)
 = `theta` scaled by `sigma.lv`, directly comparable to a Python `GLLVM.wz`.  `.available()`

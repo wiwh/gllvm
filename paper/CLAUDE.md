@@ -721,16 +721,39 @@ embeddings ($N(0,1)$ channels for downstream).
   is the *best* encoder for $W$ — lowest mean (0.075 vs 0.080) and ~half the variance (±0.011 vs
   ±0.024); the **correct Poisson-Newton MAP is no better** (0.078) despite being calibrated ⇒
   **encoder fidelity ≠ estimator quality** (score identity). So: cheap MAP + optional quantile.
-- **Negative result — quantile does NOT win on gllvm's turf (simulation_1, 240 reps, `zqe_q` arm).**
-  Overall mean Procrustes: plain `zqe` 0.218 < `zqe_q` 0.250 < `gllvm` 0.300; `zqe_q` beats `zqe`
-  only 36% of reps, `gllvm` only 18%. Sharply **n-dependent**: at **n=20** (gllvm's turf) the
-  rank→N(0,1) projection over so few points *backfires* (−16…−31% vs `zqe`); n=100 a wash; n=500
-  marginal (+0–3%, matches the large-n result). It never closes the gllvm gap where gllvm is
-  healthy; where `zqe_q` "beats" gllvm it's only because gllvm itself blows up (plain `zqe` ties it
-  there). ⇒ Confirms: quantile is for **robustness/embeddings, not W-efficiency**; do not adopt it
-  as a gllvm-turf efficiency lever. (Reinforces the cancel-in-the-centered-equation theory.)
+- **Negative result — quantile does NOT win in the MLE's own regime (simulation_1, 240 reps, `zqe_q`
+  arm). RE-RUN 2026-06-22 with the paper setting WZS=0.5 + ridge l2=0.5/n** (λ=0.5; per-fit λ/n,
+  consistency-preserving). Overall mean Procrustes: plain `zqe` 0.316 < `zqe_q` 0.340 < `gllvm`
+  0.410; `zqe_q` beats `zqe` only 22% of reps. Still the same story: plain MAP `zqe` is the best
+  W-encoder; quantile is **not** an efficiency lever (use it only for robustness/embeddings). NB the
+  WZS=1.0/no-ridge numbers (zqe 0.218 / zqe_q 0.250 / gllvm 0.300) are superseded.
 - Meta: consistency holds for *any* surrogate, so we are not locked in — present MAP as the
   recommended default and the quantile as a cheap refinement the framework *admits*.
+
+## Simulation-1 (and -3) paper setting + figures (2026-06-22)
+
+**Setting standardized to WZS=0.5, ridge l2=0.5/n (λ=0.5).** Loading scale 0.5 (was 1.0) keeps
+Poisson rates / binomial probs unsaturated; ridge λ=0.5 added per-fit as **λ/n** (NOT a constant —
+the 1/n is what keeps consistency; `L2_COEF/Y.shape[0]` in the sweeps). Applied to simulation_1
+(Poisson) and simulation_3 (binomial "bernoulli" twin, BINOM_TRIALS=10 kept). Robustness sim_2 uses
+no ridge. Paper §"Ridge stabilization" updated: λ=0.5 in loading-recovery studies (was 0.1, stale).
+
+**Framing: "regime" not "turf"; "competitive in the MLE's own regime", never "we beat/destroy".**
+The §exp-turf prose + intro bullet + summary edited accordingly (label id `sec:exp-turf` kept).
+
+**New numbers (sim_1, 20 reps, mean Procrustes).** n=20: `zqe`≈0.50–0.58 vs `gllvm` 0.75–0.94
+(gllvm catastrophe rate >0.5 is 75–100%, worst 1.5; zqe worst ≤1.03). n=100: tied (within 0.01–0.03;
+gllvm a hair better at small p, zqe at large p). n=500: tied (gllvm marginal efficiency edge at p≥20,
+but still one flier at p=10 = 0.52 vs zqe ≤0.25). The old WZS=1.0 catastrophe at n=500,p=100 (0.88)
+is GONE with the smaller loadings — catastrophes now concentrate at n=20.
+
+**Two paper figures generated** (scripts in `simulations/simulation_1/`):
+- `make_paper_figure.py` → `paper/figures/sim1_procrustes_box.pdf` (Fig `fig:sim1box`): Procrustes
+  boxplots, fliers shown — the reliability/tail story (gllvm fliers above 0.5 line at small n).
+- `make_bias_figure.py` → `paper/figures/sim1_bias.pdf` (Fig `fig:ridge-bias`, in appendix ridge
+  §): residual-vs-true-loading, pooled; ridge shrinkage slope −0.15 (n=20) → −0.04 (n=100) →
+  −0.002 (n=500), vanishing as λ/n; gllvm unbiased. GB's requested bias diagnostic.
+- DEFERRED idea (GB): scale ridge by √p too (more responses = more data); kept λ/n for now.
 
 ## Robustness / Huberization section plan (2026-06-21)
 
@@ -770,3 +793,38 @@ prior-preconditioned **CG** (sub-cubic; exact to 1e-12; crossover vs dense $(qK)
 case → exact Kronecker eigentrick (no CG). Verified prototype:
 `playground/gp-gllvm/_blockscale_verify.py`. For the main paper, dense is fine at the $q\le12$ we use;
 this only matters at large $q$ → Paper 2.
+
+---
+
+## Encoder-class scope: "smooth + globally identifying", not "any" (2026-06-27)
+
+**The sellable scoping of the encoder-flexibility result.** Do NOT pitch "any encoder works"
+(reads as a content-free / negative result a referee distrusts). The precise, positive claim:
+
+> The ZQE decoder estimator is consistent for **any encoder that is smooth and remains an
+> identifying z-map over the θ-region traversed** — not literally any encoder, and not only
+> θ-tracking ones.
+
+Two ingredients, cleanly separated:
+- **Fisher-consistency is encoder-agnostic.** For *any* fixed map `e(·)`, θ* is a root of the
+  estimating equation: at θ* the centering `E_θ[T(Y_q)·η(e(Y_q);θ)]` equals the data term (both
+  under `f_{θ*}`), so they cancel exactly. The encoder need not track θ for θ* to be a zero.
+- **Identification needs smooth + globally valid.** Smoothness → the Jacobian `A=E[ψ sᵀ]` is
+  well-defined and the IFT/AN machinery applies. Global validity (the encoder stays an informative
+  z-map across the region) → `A` stays nonsingular and the objective stays bounded.
+
+**Why this sells (flips the paper's known weak spot):**
+1. *It has content* — a checkable condition, not "anything goes."
+2. *It predicts the experiments instead of apologizing for them.* Closed-form MAP satisfies the
+   condition → works. The frozen amortized VAE is only *locally* valid (trained at θ_VAE) → violates
+   global identification → diverges (`wz→±50`, Procrustes→1). The divergence becomes **confirmation
+   of the boundary**, not an embarrassment. (Correction to the older "frozen ⇒ fails" note: frozen
+   is NOT the disqualifier — *locally-trained* is; a smooth, globally-valid frozen encoder would
+   also be consistent.)
+3. *It's constructive + explains scale in one breath:* you only need the **cheapest** smooth global
+   z-map (the parameter-free closed-form encoder) — no θ-tracking, no training — and dropping all
+   encoder parameters is precisely what enables the large-scale regime.
+
+Net: converts the defensive "encoder doesn't matter" into the offensive "here is the valid encoder
+class, the cheap closed-form member qualifies, and discarding the rest is what buys scale." Sits
+directly under the title *Z-Estimation for Large-Scale Latent Variable Models*.

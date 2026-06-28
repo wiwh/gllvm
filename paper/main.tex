@@ -50,7 +50,7 @@
 
 \begin{document}
 
-\title{Consistent Decoder Estimation in Latent Variable Models with Misspecified Encoders}
+\title{Z-Estimation for Large-Scale Latent Variable Models}
 
 \author{\name Guillaume Blanc \email guillaume.e.blanc@gmail.com
   \AND
@@ -63,18 +63,11 @@
 
 \begin{abstract}
 
-We study decoder estimation in latent variable models when posterior inference is approximate, misspecified, or reused across datasets. In these settings, standard variational, plug-in, or EM-type updates generally target the wrong population equation and can therefore yield asymptotically biased decoder estimates.
+Fitting a latent variable model appears to force a choice. Likelihood-based methods---maximum likelihood, EM, variational approximation---are consistent and principled but do not scale: they degrade in the response dimension, in the latent dimension, and under structured priors. Amortized and approximate alternatives scale but surrender statistical guarantees, paying a posterior-misspecification or amortization bias that does not vanish. We show this choice is unnecessary: a designed Z-estimating equation yields a consistent, calibrated estimator for the generative (decoder) parameters that scales to regimes where likelihood-based and variational methods cannot run.
 
-We introduce the $Z_q$ estimator, a centered Z-estimation framework for decoder
-parameters that treats the surrogate inference mechanism as given during
-estimation. The method constructs estimating equations whose population moment
-vanishes at the true decoder by design. The surrogate family may still depend on
-the decoder parameter, but it is not jointly re-estimated as a nuisance object
-in the asymptotic analysis.
+The estimator treats the inference mechanism (the encoder) as given. It forms an estimating function from expectations under a surrogate and subtracts its model expectation, so the induced population moment vanishes at the true decoder \emph{by construction}---for any sufficiently smooth, identifying encoder, not only the exact posterior. We establish consistency and asymptotic normality under a local Jacobian-nonsingularity condition, relate the Jacobian to a perturbation of the Fisher information, and verify it for the Gaussian-proxy generalized linear latent variable model (GLLVM). Surrogate quality affects efficiency and conditioning, never the population root; this decoupling---estimating the decoder without a trained or posterior-exact encoder---is what removes the cost barrier.
 
-We establish consistency and asymptotic normality under standard regularity conditions and a local Jacobian nonsingularity assumption. The resulting theory shows that surrogate quality affects efficiency and conditioning, but not the population root. This yields two practically important regimes: computationally efficient learning with crude inference, and transfer settings in which a frozen encoder is reused under distribution shift.
-
-Empirically, we show that $Z_q$ remains stable under severe posterior misspecification in generalized linear latent variable models and amortized inference settings, where standard variational estimators exhibit persistent bias. These results show that accurate decoder estimation does not require accurate posterior inference, provided the estimating equations are properly centered.
+Because the centered equations need only samples or expectations under the surrogate---never the marginal likelihood, never a differentiable encoder---they deliver: (i) decoder estimation invariant to the response dimension and immune to amortization bias, with recovery that \emph{improves} as the dimension grows; (ii) calibrated uncertainty, validated to near-nominal coverage by a re-solving parametric bootstrap, in a regime where deterministic observed-information standard errors---including those of standard software---are unreliable; (iii) a bounded-influence, outlier-robust estimator obtained simply by bounding the statistic, with the centering supplying Fisher consistency automatically; and (iv) a Gaussian-process latent variable model (GP-GLLVM) fit at a cost independent of the number of observations, recovering per-factor temporal or spatial length-scales at a scale where likelihood-based and variational methods do not apply. We demonstrate the last on 10x Visium spatial transcriptomics, recovering a scale-resolved, count-native factor decomposition of mouse-brain tissue. These are instances of a single composable construction---the encoder, the statistic, and the latent prior are each free choices---bringing a broader class of scalable, structured latent variable models within reach.
 
 \end{abstract}
 
@@ -118,17 +111,18 @@ Our answer is yes, under a local identification condition. The key idea is to re
 
 \paragraph{Contributions.}
 We make four main contributions.
-First, we introduce the $Z_q$ estimator, a centered Z-estimation procedure for decoder parameters based on arbitrary surrogate posteriors.
-Second, we show that centering fixes the population root and establish consistency and asymptotic normality under a local Jacobian nonsingularity condition.
-Third, we relate the Jacobian to a perturbation of the Fisher information, yielding interpretable sufficient conditions for local identification.
-Fourth, we give a practically useful view of estimation with frozen surrogates, including pretrained, amortized, and non-differentiable encoders, for which decoder learning requires only expectations or samples under the surrogate. We focus on decoder estimation conditional on such a surrogate mechanism, rather than on the full joint asymptotics of simultaneous encoder--decoder training when encoder parameters are themselves estimated from the same sample throughout training. That extension is important, but distinct from the present goal of isolating a centered decoder-estimation principle.
+First, we introduce the $Z_q$ estimator, a centered Z-estimation procedure for decoder parameters that is consistent for \emph{any} surrogate posterior, and establish its consistency and asymptotic normality under a local Jacobian nonsingularity condition (Section~\ref{sec:asymptotics}).
+Second, we relate the Jacobian to a perturbation of the Fisher information, giving interpretable sufficient conditions for local identification, and we \emph{verify} them for the Gaussian-proxy GLLVM (Appendix~\ref{apx:gllvm-identification}).
+Third, we show the construction makes two practically important estimators essentially free, because it never needs the marginal likelihood or a differentiable encoder: a \emph{robust} decoder estimator with bounded influence in the response---obtained by bounding the statistic, the centering supplying Fisher consistency automatically---and a \emph{scalable} estimator whose per-step cost is independent of the response and sample sizes through response/observation subsampling.
+Fourth, we develop the \emph{GP-GLLVM} (Section~\ref{sec:gpgllvm}): a Gaussian-process latent-variable model estimated likelihood-free at a cost independent of the number of observations, and apply it to spatial transcriptomics---to our knowledge the first count-native Gaussian-process factor analysis at this scale.
+We focus throughout on decoder estimation conditional on a given surrogate \emph{mechanism}, not the full joint asymptotics of simultaneous encoder--decoder training.
 
 \paragraph{Empirical evaluation.}
-We design experiments to target practical regimes in which a surrogate inference mechanism is available but should not be trusted as a likelihood surrogate for decoder learning.
-First, we consider a generalized linear latent variable model (GLLVM) fitted with an intentionally wrong MAP-imputation rule under a misspecified model, illustrating that naive plug-in approaches can drift while the centered equations remain stable.
-Second, we study encoder reuse under distribution shift by perturbing the GLLVM decoder while keeping a fixed encoder trained on a reference model; standard ELBO-based updates exhibit persistent bias, whereas $Z_q$ recovers the perturbed decoder.
-Third, we consider a transfer setting on MNIST: we train an encoder on digits $0$--$8$, freeze it, and then use it as a surrogate mechanism while fitting a decoder for digit $9$ only; we compare standard VAE training to the $Z_q$ updates through decoder recovery and generative quality.
-We also include a controlled underspecification sweep in which encoder capacity is progressively reduced in a correctly specified GLLVM, isolating the robustness--efficiency trade-off predicted by the theory.
+Our experiments (Section~\ref{sec:sims}) target the method's claims where the truth is known.
+(i) Under a deliberately misspecified or underspecified encoder, $Z_q$ recovers the decoder where ELBO training is biased, and its accuracy is \emph{invariant to the response dimension} $p$ while a variational autoencoder degrades sharply.
+(ii) In the maximum-likelihood estimator's own regime (small dense Poisson GLLVMs), $Z_q$ with an asymptotically-free loading ridge is competitive with a state-of-the-art variational MLE.
+(iii) A bounded-influence variant is flat against outlier magnitude and degrades gracefully with the contamination fraction up to its breakdown point.
+(iv) The GP-GLLVM fits at a cost independent of $n$---up to millions of observations---recovers per-factor length-scales, and yields an interpretable scale-resolved decomposition of real spatial-transcriptomics data.
 
 \paragraph{On identification.}
 Local identification of the $Z_q$ estimator reduces to nonsingularity of the
@@ -147,7 +141,8 @@ providing a robustness optimality result within that class.
 \paragraph{Organization.}
 Section~\ref{sec:method} defines the $Z_q$ estimating equations and relates them to classical likelihood identities in latent variable models.
 Section~\ref{sec:asymptotics} provides asymptotic theory and identification conditions.
-Section~\ref{sec:sims} describes the simulation designs, and Section~\ref{sec:results} reports empirical results.
+Section~\ref{sec:gpgllvm} develops the scalable GP-GLLVM.
+Section~\ref{sec:sims} reports the empirical study.
 
 
 % ============================== 
@@ -755,6 +750,135 @@ Because the bootstrap uses the same centered estimating equations as the origina
 
 
 % ------------------------------------------------
+% GP-GLLVM
+%
+\section{Scalable likelihood-free estimation with a Gaussian-process latent prior}
+\label{sec:gpgllvm}
+
+The centered construction is most valuable precisely where likelihood-based inference is intractable. We develop one such case in detail: a \emph{Gaussian-process} latent-variable model in which the latent factors vary smoothly over a covariate---time in longitudinal data, space in spatial genomics. Here the marginal likelihood integrates a high-dimensional, non-Gaussian latent process and is unavailable; variational and Laplace approximations require an $O(G^3)$ covariance factorization per group and do not apply to non-Gaussian latents at scale. The $Z_q$ estimator sidesteps all of this: it needs only samples from the model and a cheap latent imputer.
+
+\subsection{Model}
+Observations come in independent \emph{groups} $g=1,\dots,B$ (subjects, tissue sections), each with $G_g$ responses recorded at input coordinates $t_1,\dots,t_{G_g}\in\mathbb R^d$ ($d=1$ for time, $d=2$ for space). Within a group, each of the $q$ latent factors is an independent, zero-mean Gaussian process over the coordinates,
+\[
+Z_{\cdot k} \sim \mathcal{GP}\!\big(0,\,K_{\ell_k}\big),\qquad k=1,\dots,q,
+\]
+with a squared-exponential kernel $K_{\ell_k}(t,t')=\exp(-\|t-t'\|^2/2\ell_k^2)$ of factor-specific length-scale $\ell_k$. The factors are mutually independent, so the joint latent covariance $\Sigma(\ell)$ over a group is \emph{block-diagonal} across factors. Conditionally on the latent trajectory the responses follow the same exponential-family GLLVM decoder as before,
+\[
+\Y_i \mid Z_i \;\sim\; f_{\Y\mid\Z;\bt}(\cdot\mid Z_i),\qquad \eta(Z_i,\bt)=W Z_i + b,
+\]
+with loadings $W\in\mathbb R^{p\times q}$ and intercepts $b\in\mathbb R^p$. Equivalently, writing $\varepsilon\sim\mathcal N(0,I)$ and $Z=L(\ell)\varepsilon$ with $L(\ell)L(\ell)^\top=\Sigma(\ell)$, the decoder is unchanged and the kernel parameters enter only through the latent prior; the decoder parameter is $\bt=(W,b,\ell)$.
+
+This is the natural latent-Gaussian-process generalization of factor analysis. With i.i.d.\ latents ($\Sigma=I$) it reduces to the standard GLLVM; because $K_{\ell_k}(t,t)=1$, the marginal of any \emph{single} observation is exactly that GLLVM, so the Gaussian process adds correlation only across observations.
+
+\subsection{Estimator}
+The centered $Z_q$ equations apply verbatim. The loadings and intercepts use the data-anchored moment of Section~\ref{sec:zq_estimator}, $\Psi_n(W,b)=0$, with the parameter-free Gaussian-proxy MAP imputer of Section~\ref{sec:method} for $q_{\Z\mid\Y}$ (here a \emph{joint} block-MAP over the latent trajectory under $\Sigma(\ell)$). The length-scales $\ell$ enter the latent covariance rather than the per-observation mean, so they require a \emph{second-moment} estimating equation: we drive $\ell$ to satisfy the fantasy-centered moment condition
+\[
+\mathbb E_{\mathrm{data}}\!\big[\hat Z\hat Z^\top\big]-\mathbb E_{\mathrm{model}}\!\big[\hat Z\hat Z^\top\big]=0,
+\]
+whose model side depends on $\ell$ through $\Sigma(\ell)$. This cross-observation moment is what identifies the kernel: a per-observation statistic $T(\Y)\cdot\eta$ is invariant to $\ell$ in value and cannot recover it.
+
+\paragraph{A surrogate that scales: the marginal subsampling theorem.}
+Any subset of a Gaussian process is itself an exact Gaussian-process marginal. Hence fitting on a random \emph{$K$-subset} of each group---for both the data term and the model fantasies---is exact, not an approximation, for every $K$. Every operation is then $K\times K$, never $G\times G$, and the per-step cost is
+\[
+O\!\big(\text{batch}\cdot K\cdot p + K^3\big),\qquad\text{independent of the group size }G\text{ and the number of groups }B,
+\]
+with $K$ a knob trading cost for statistical efficiency. (Block subsampling of a Gaussian process is the Vecchia / composite-likelihood idea; the novelty here is the \emph{likelihood-free} realization for a non-Gaussian latent, where the block likelihood would itself integrate an intractable latent.)
+
+\paragraph{Identification: keep the loadings full.}
+Distinct length-scales break the loadings' rotation gauge: a rotation mixes factors with different kernels and changes the latent covariance, so it is detectable. The loadings are therefore identified up to permutation and sign, and---unlike the standard GLLVM---\emph{no} triangular constraint should be imposed: with distinct kernels there is generally no rotation taking the true $W$ into triangular form, so such a constraint would exclude the truth and bias both $W$ and $\ell$. We keep $W$ full. A shared kernel returns the $O(q)$ gauge, where a triangular constraint is again appropriate (Appendix~\ref{apx:gp-identification}).
+
+% ------------------------------------------------
+% EMPIRICAL STUDY
+%
+\section{Empirical study}
+\label{sec:sims}
+
+We evaluate $Z_q$ on generalized linear latent variable models, where the data-generating decoder is known, and on a real spatial-transcriptomics dataset. Loadings are compared by the \emph{relative orthogonal Procrustes error}
+\[
+d(W,\hat W)=\min_{R\in O(q)}\|W-\hat W R\|_F\,/\,\|W\|_F,
+\]
+a pure rotation alignment (no centering or rescaling; \citealp{schoenemann1966}), which removes the latent rotational ambiguity while still penalizing scale bias. Baselines are R's \texttt{gllvm} (a state-of-the-art variational/Laplace marginal-likelihood estimator) and, where relevant, a variational autoencoder (joint ELBO). All estimators are fit to the \emph{same} simulated data, and $Z_q$ uses the parameter-free Gaussian-proxy MAP imputer with statistic $T(y)=\log(1+y)$ unless stated otherwise.
+
+\subsection{Consistency under a misspecified encoder, and the large-$p$ regime}
+\label{sec:exp-misspec}
+We first fit a correctly specified Poisson GLLVM with two learning rules sharing the \emph{same} surrogate: ELBO maximization (VAE) and the $Z_q$ equations. The amortized encoder cannot, in general, represent the true posterior, and the resulting gradient bias persists as $n$ grows. At fixed moderate $p$ and ample $n$, the parameter-free $Z_q$ proxy already matches or beats a carefully tuned VAE (e.g.\ Procrustes $0.024$ vs.\ $0.030$). The contrast sharpens with the response dimension: as $p$ grows, the $Z_q$ proxy concentrates (a law-of-large-numbers over the $p$ responses, Section~\ref{sec:large-p}) and is essentially invariant to $p$, while the fixed-capacity VAE encoder degrades (Table~\ref{tab:psweep}). This is the structural amortization gap: the $Z_q$ proxy is never trained, never overfits, and induces no gradient bias.
+
+\begin{table}[t]
+\centering
+\caption{Response-dimension sweep ($q{=}10$, $n{=}1000$, dense Poisson GLLVM): relative Procrustes error. $Z_q$ with a parameter-free $\log(1{+}y)$ proxy is invariant to $p$; the VAE collapses.}
+\label{tab:psweep}
+\begin{tabular}{lcccc}
+\toprule
+$p$ & $10$ & $100$ & $1000$ & $2000$\\
+\midrule
+VAE (tuned ELBO)        & $0.055$ & $0.030$ & $0.082$ & $0.630$\\
+$Z_q$ (proxy, $\log1p$) & $0.030$ & $0.024$ & $0.025$ & $0.025$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{In the maximum-likelihood estimator's own regime: efficiency and stability}
+\label{sec:exp-turf}
+We next place $Z_q$ in the regime most favorable to the MLE: small, dense Poisson GLLVMs ($q{=}2$, $p\in\{10,20,50,100\}$, $n\in\{20,100,500\}$, loading scale $\sigma_W{=}0.5$, $20$ replications each), compared against R's \texttt{gllvm}. Here $Z_q$ carries the loading ridge of Section~\ref{apx:auto-lambda} with $\lambda{=}0.5$ (penalty $0.5\,\|W\|_F^2/n$); this matters at the smallest samples, where the unpenalized $Z_q$ objective is shallow and $Z_q$ is in fact \emph{less} stable than \texttt{gllvm}---the ridge, which is asymptotically free (Section~\ref{apx:auto-lambda}), is what brings $Z_q$ level. As the theory predicts---$Z_q$ is generally \emph{not} the MLE---the marginal-likelihood estimator is at best marginally more efficient once the sample is informative: at $n{=}100$ and $n{=}500$ the two are statistically indistinguishable in the median (mean Procrustes within $0.01$--$0.03$ across all $p$, \texttt{gllvm} ahead by a hair at large $p$ and $Z_q$ ahead at $p{=}10$). The price of generality is therefore negligible even in the MLE's best case.
+
+At the smallest sample size ($n{=}20$) both estimators are stressed and the penalty does its work (Figure~\ref{fig:sim1box}): the objective is shallow, and \texttt{gllvm} in particular shows a heavy tail of catastrophic fits---loadings essentially orthogonal to the truth (Procrustes $\gtrsim 1$), with $75$--$100\%$ of replicates exceeding $0.5$ and worst cases reaching $1.5$---while the penalized $Z_q$ has a comparable or lighter spread (worst case $\le 1.03$ at $n{=}20,p{=}100$). We do not read this as $Z_q$ out-performing the MLE---a penalized likelihood would stabilize too---but as evidence that, with an asymptotically-free ridge, $Z_q$ stays \emph{competitive} with a mature variational MLE throughout its own regime, while carrying the generality (arbitrary surrogates, robustness, GP priors, scale) that the rest of the paper exploits.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/sim1_procrustes_box.pdf}
+\caption{Loading recovery in the MLE's own regime (dense Poisson, $q{=}2$, $\sigma_W{=}0.5$, $20$ replications; relative orthogonal Procrustes error, lower is better; fliers shown). $Z_q$ (with the asymptotically-free loading ridge) and \texttt{gllvm} are competitive in the median across the grid. When information is scarce ($n{=}20$) both are stressed; \texttt{gllvm} shows a heavy tail of catastrophic fits---fliers above the dashed line at $0.5$, i.e.\ loadings essentially orthogonal to the truth---most severely at small $n$ and large $p$, while the penalized $Z_q$ has a comparable or lighter spread.}
+\label{fig:sim1box}
+\end{figure}
+
+\subsection{Robustness to outlier contamination}
+\label{sec:exp-robust}
+Because the statistic $T$ is ours to choose, bounded influence in the response is a one-line design choice---and the model-expectation centering $\mathbb E_\theta[T\cdot\eta]$ supplies the Fisher-consistency correction for \emph{any} $T$ automatically, so robustness costs no consistency. We fit a fixed clean Poisson GLLVM ($q{=}2,p{=}50,n{=}200$) and corrupt a fraction $\varepsilon$ of cells to a gross value $M$, fitting three estimators to the \emph{same} contaminated data that differ only in their influence: \texttt{gllvm} (full likelihood, unbounded influence in $y$); $Z_q$ with $T=\log(1+y)$ (logarithmic, down-weighted); and $Z_q$ with the bounded statistic $T=\min(\log(1+y),c)$, $c$ a robust cut estimated in log-space.
+
+The bounded estimator is \emph{flat against outlier magnitude}: increasing $M$ from $10$ to $10^5$ leaves it at Procrustes $\approx 0.28$, while \texttt{gllvm} explodes (to $42$ and then numerical failure) and even the logarithmic $Z_q$ climbs (Table~\ref{tab:robust}, top). Against the contamination \emph{fraction} it is controlled up to a breakdown point near $\varepsilon\approx 0.3$---where the robust scale $c$ itself is corrupted (Table~\ref{tab:robust}, bottom). This is the constructive form of the robustness--efficiency trade-off: bounded influence by design, consistency by centering.
+
+\begin{table}[t]
+\centering
+\caption{Robustness (clean Poisson $q{=}2,p{=}50,n{=}200$; Procrustes error). Top: outlier magnitude $M$ at fixed $\varepsilon{=}0.05$. Bottom: contamination fraction $\varepsilon$ at fixed $M{=}1000$. ``--'' = numerical failure.}
+\label{tab:robust}
+\begin{tabular}{lccccc}
+\toprule
+$M$ & $10$ & $100$ & $10^3$ & $10^4$ & $10^5$\\
+\midrule
+\texttt{gllvm}                 & $0.31$ & $1.38$ & $41.9$ & $24.3$ & --\\
+$Z_q$ ($\log1p$)               & $0.22$ & $0.28$ & $0.42$ & $0.76$ & $1.40$\\
+$Z_q$ (bounded $T$)            & $0.23$ & $0.28$ & $0.28$ & $0.28$ & $0.28$\\
+\midrule
+$\varepsilon$ & $0.02$ & $0.05$ & $0.10$ & $0.20$ & $0.30$\\
+\midrule
+\texttt{gllvm}                 & $8.3$  & $41.9$ & $30.6$ & $28.8$ & $69.0$\\
+$Z_q$ ($\log1p$)               & $0.24$ & $0.42$ & $0.53$ & $0.69$ & $0.89$\\
+$Z_q$ (bounded $T$)            & $0.19$ & $0.28$ & $0.39$ & $0.62$ & $1.11$\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Scaling and a spatial-transcriptomics application}
+\label{sec:exp-gp}
+We now turn to the GP-GLLVM of Section~\ref{sec:gpgllvm}, the regime in which likelihood-based and variational methods do not apply.
+
+\paragraph{Cost is independent of $n$.}
+On synthetic data ($q{=}2$, $p{=}30$, squared-exponential kernel), fitting on random $K$-subsets ($K{=}15$) gives a wall-clock time that is \emph{flat} in the number of observations: groups of size up to $G{=}1000$ with $B{=}2000$ groups---up to several million observations---fit in about $3.5$ seconds, with recovery improving as $G$ grows. By contrast a full-group Gaussian-process likelihood is $O(G^3)$ and, with a non-Gaussian latent, intractable. The per-factor length-scales are recovered cleanly: with distinct true scales $\ell=(1,3)$, ten cold-start runs on fresh data give $\hat\ell=(1.01\pm0.03,\,3.02\pm0.08)$ and loading error $0.027$, with no divergence.
+
+\paragraph{Real data: 10x Visium mouse brain.}
+We fit the GP-GLLVM to a 10x Visium spatial-transcriptomics section of mouse brain: $n=2695$ spots, $p=100$ spatially variable genes, Poisson responses, and $d=2$ spatial coordinates, with a per-spot library-size offset. Fitting on local spatial $K$-subsets takes about two minutes on a CPU and recovers \emph{distinct per-factor spatial length-scales} ranging from $\sim\!150\,\mu$m to $\sim\!1.5\,$mm. The corresponding factor maps (Figure~\ref{fig:visium}) are spatially coherent and anatomically interpretable, and their smoothness tracks the estimated length-scale---a scale-resolved, count-native decomposition of the tissue. The factor whose length-scale falls below the spot pitch is, correctly, an unstructured (nugget) channel. To our knowledge no existing method delivers count-native Gaussian-process factor analysis at this scale: Gaussian-process factor analysis and its spatial descendants are Gaussian and $O(n^3)$-bound. The construction also composes with the regularizers of the base estimator (e.g.\ a group lasso on loading columns for automatic factor selection), which we do not pursue here.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/visium_factors.png}
+\caption{GP-GLLVM on 10x Visium mouse brain ($n{=}2695$ spots, $p{=}100$ genes), fit likelihood-free on local spatial $K$-subsets. Each panel is one estimated latent factor over the tissue, ordered by its recovered spatial length-scale $\ell$ (annotated). The factors form a scale-resolved decomposition---fine, near-resolution texture through broad anatomical gradients---with smoothness tracking $\ell$.}
+\label{fig:visium}
+\end{figure}
+
+\paragraph{Summary.}
+Across the four studies, $Z_q$ recovers the decoder where ELBO training is biased and is invariant to the response dimension (Section~\ref{sec:exp-misspec}); is competitive with the MLE in the MLE's own regime (Section~\ref{sec:exp-turf}); is robust to gross contamination by a one-line change of statistic (Section~\ref{sec:exp-robust}); and scales to a Gaussian-process latent model and real spatial data that lie beyond likelihood-based methods (Section~\ref{sec:exp-gp}).
+
+\iffalse  % ===== superseded simulation/results section (kept for reference) =====
+% ------------------------------------------------
 % SIMULATION
 %
 \section{Simulation study}
@@ -958,6 +1082,8 @@ misspecified posteriors yield well-behaved estimating equations.
 Taken together, these results demonstrate that the proposed $Z_q$ estimator
 achieves reliable decoder estimation across a wide range of inference regimes,
 including settings in which standard variational approaches are known to fail.
+
+\fi  % ===== end superseded simulation/results section =====
 
 
 
@@ -1312,6 +1438,73 @@ produces the same centered estimating equations as those induced by the exact po
 
 Hence the \(Z_q\) estimating equations coincide with the marginal score equations, so any root of the \(Z_q\) equations is an MLE. The estimator therefore coincides with the maximum likelihood estimator and inherits its Fisher efficiency.
 \end{proof}
+
+
+\subsection{Identification for the Gaussian-proxy GLLVM}
+\label{apx:gllvm-identification}
+
+We verify the local identification condition of Section~\ref{sec:asymptotics} for a concrete, widely used model. Consider a GLLVM with conditionally independent responses, each from a one-parameter exponential family with natural parameter $\eta_j(z;\bt)=w_j^\top z+b_j$, prior $\Z\sim\mathcal N(0,I_q)$, and $\bt=(W,b)$, $W=[w_1\mid\cdots\mid w_p]^\top$. The \emph{Gaussian proxy} takes a strictly increasing transform $T_j$ and treats $T_j(Y_j)\mid Z\sim\mathcal N(w_j^\top Z+b_j,\sigma^2)$, giving the closed-form MAP imputer
+\[
+\hat z(y;\bt)=\Sigma_z\,W^\top\!\big(T(y)-b\big),\qquad \Sigma_z=(W^\top W+\sigma^2 I)^{-1}.
+\]
+Write $\tilde T_j$ and $\tilde\mu_j(z)=\mathbb E[\tilde T_j(Y_j)\mid Z=z]$ for the family's canonical statistic and mean. By the Jacobian identity~\eqref{eq:jacobian_final}, $A(\bt_0)=\mathbb E[\psi(\bt_0;Y)\,s(\bt_0;Y)^\top]$, and the true marginal score decomposes response-by-response.
+
+\begin{lemma}[Intercept block]
+\label{lem:bblock}
+For all $j\neq k$, $(A_{bb})_{jk}=0$, and for each $j$
+\[
+(A_{bb})_{jj}=\mathbb E\big[\operatorname{Cov}\!\big(T_j(Y_j),\,\tilde T_j(Y_j)\mid Z\big)\big]>0 .
+\]
+Thus $A_{bb}\succ0$, with no condition on $p$ or $W$.
+\end{lemma}
+\begin{proof}
+$(A_{bb})_{jk}=\operatorname{Cov}\!\big(T_j(Y_j),\,s_{b_k}(\bt_0;Y)\big)$. Split the score residual $s_{b_k}=\big(\tilde T_k(Y_k)-\tilde\mu_k(Z)\big)+\big(\tilde\mu_k(Z)-\mathbb E[\tilde\mu_k(Z)\mid Y]\big)$. The first (noise) term has zero conditional mean given $Z$, so by the law of total covariance its covariance with $T_j(Y_j)$ equals $\mathbb E[\operatorname{Cov}(T_j(Y_j),\tilde T_k(Y_k)\mid Z)]$, which vanishes for $j\neq k$ by conditional independence and is the stated positive quantity for $j=k$ (strictly increasing $T_j$ and non-degenerate conditional variance). The second (posterior-residual) term is orthogonal in $L^2$ to every $\sigma(Y)$-measurable function, hence to $T_j(Y_j)$.
+\end{proof}
+
+\begin{lemma}[Loading block, large $p$]
+\label{lem:wblock}
+Let $p\to\infty$ with $q$ fixed and assume: \emph{(A1)} $\lambda_{\min}(W_p^\top W_p/p)\ge c>0$; \emph{(A2)} $\max_j\|w_j\|^2/p\to0$; \emph{(A3)} $\sup_j\operatorname{Var}(T_j(Y_j)\mid Z)\le\kappa<\infty$; \emph{(A4)} $\sup_j|\tilde\mu_j(Z)-(w_j^\top Z+b_j)|\le C\|w_j\|$. Then the MAP imputer concentrates, $\hat z(Y;\bt_0)=Z+O_{L^2}(p^{-1/2})$, and consequently the normalized Jacobian satisfies $A(\bt_0)/p=\mathcal I(\bt_0)/p+\bar R_p$ with $\|\bar R_p\|_{\mathrm{op}}=O(p^{-1/2})$; hence $A(\bt_0)$ is nonsingular for all $p$ large enough.
+\end{lemma}
+\begin{proof}[Proof sketch]
+Decompose $T(Y)-b=WZ+\beta(Z)+\xi$ into signal, linearization bias $\beta_j=\tilde\mu_j(Z)-b_j-w_j^\top Z$, and conditional-mean-zero noise $\xi$. Then $\hat z-Z=-\sigma^2\Sigma_z Z+\Sigma_z W^\top\beta+\Sigma_z W^\top\xi$. Under (A1), $\|\Sigma_z\|_{\mathrm{op}}\le 1/(cp)$, giving shrinkage term $O(p^{-2})$ and, with (A4) and $\|W\|_F^2=O(p)$, bias term $O(p^{-1})$; the noise term has $\mathbb E\|\Sigma_z W^\top\xi\|^2\le\kappa\operatorname{tr}(\Sigma_z W^\top W\Sigma_z)\le\kappa q/(cp)$ by (A3). Hence $\mathbb E\|\hat z-Z\|^2=O(p^{-1})$. Both $\psi$ and $s$ are affine in $\hat z$ resp.\ $Z$ through the exponential-family structure, so $\psi-s=O_{L^2}(p^{-1/2})$ and, working with the per-feature objects $p^{-1/2}\psi,\;p^{-1/2}s$ (which have $O(1)$ norm), $\|\bar R_p\|_{\mathrm{op}}=O(p^{-1/2})$. Since $\lambda_{\min}(\mathcal I(\bt_0)/p)\ge c'>0$ under (A1), $A(\bt_0)/p=\mathcal I/p+\bar R_p$ is nonsingular once $p$ is large.
+\end{proof}
+
+\begin{proposition}[Local identification of the Gaussian-proxy GLLVM]
+\label{prop:gllvm-id}
+Let the $T_j$ be strictly increasing. Then: \textup{(i)} $A_{bb}(\bt_0)\succ0$ for all $p$ (Lemma~\ref{lem:bblock}); \textup{(ii)} $A(\bt_0)$ is nonsingular for all $p$ sufficiently large whenever $W$ has full column rank (Lemma~\ref{lem:wblock}); and \textup{(iii)} $A(\bt_0)$ is nonsingular whenever $\lambda_{\min}(\mathcal I(\bt_0))>\|A(\bt_0)-\mathcal I(\bt_0)\|_{\mathrm{op}}$, a condition verifiable numerically at any $\bt_0$. Under any of these, Theorem~\ref{thm:Zq-main} applies and the Gaussian-proxy $Z_q$ estimator is consistent and asymptotically normal with sandwich covariance $\Sigma=A^{-1}BA^{-\top}$.
+\end{proposition}
+
+\subsection{Identification of the GP-GLLVM}
+\label{apx:gp-identification}
+
+In the GP-GLLVM of Section~\ref{sec:gpgllvm} the latent covariance over a group is block-diagonal across factors, $\Sigma(\ell)=\operatorname{blkdiag}(K_{\ell_1},\dots,K_{\ell_q})$, with $K_{\ell_k}(t,t)=1$. Two distinct objects must not be conflated. \emph{(a) The instantaneous, within-observation cross-latent covariance} is the usual factor-analytic rotation gauge: it is absorbed into the loadings and is fixed by convention ($\operatorname{Cov}(Z_i)=I$). \emph{(b) The across-observation correlation}, i.e.\ the length-scales $\ell$, is a genuine estimand: the loadings act on a single $Z_i$ and are shared across observations, so they cannot encode how observations correlate over the coordinate.
+
+The rotation gauge of the loadings depends on the kernels. Under a \emph{shared} kernel ($\ell_1=\cdots=\ell_q$), $\operatorname{Cov}(\operatorname{vec}Z)=K\otimes I_q$ is invariant under right-multiplication of $W$ by any $R\in O(q)$, so $W$ is identified only up to rotation and a triangular constraint is appropriate. Under \emph{distinct} length-scales, a rotation $R$ sends $\Sigma(\ell)$ to a covariance that is no longer block-diagonal in the same per-factor kernels unless $R$ merely permutes (and signs) factors with equal $\ell_k$; the gauge is therefore broken and $W$ is identified up to permutation and sign. Consequently a triangular constraint is, generically, \emph{misspecified} here: there is no rotation taking a full $W_0$ into triangular form while preserving the distinct-kernel covariance, so the constrained family excludes the truth and biases both $W$ and $\ell$. We therefore keep $W$ full. Factors whose length-scales coincide retain a residual rotation gauge among themselves (reflected as estimation variance in that subspace, not bias); the relative orthogonal Procrustes error, being rotation-invariant, is unaffected.
+
+
+\subsection{Ridge stabilization and automatic penalty specification}
+\label{apx:auto-lambda}
+
+A loading-ridge penalty composes with the estimating equations at no cost to consistency. We add to the (sample-averaged) $Z_q$ objective a term $(\lambda/n)\|W\|_F^2$, so the estimating function in the loadings becomes
+\[
+\Psi_n^{\lambda}(\bt) \;=\; \Psi_n(\bt) \;-\; \frac{2\lambda}{n}\,\operatorname{vec}(W),
+\]
+where $\Psi_n$ is the unpenalized $Z_q$ function and $n$ the number of observations. Because $\Psi_n(\bt)$ is an $O_p(1)$ average while the penalty contributes a gradient of order $\lambda/n$, the perturbation vanishes as $n\to\infty$: the penalized root solves $\Psi_n(\bt)=2\lambda\,\operatorname{vec}(W)/n + o_p(n^{-1/2})$, and a first-order expansion around the unpenalized root $\widehat\bt$ gives $\widehat\bt^{\lambda}-\widehat\bt = O_p(\lambda/n)$. Since consistency and asymptotic normality are asymptotic statements, the $1/n$ scaling makes the penalized estimator share the same probability limit and the same first-order limiting distribution as the unpenalized one (Section~\ref{sec:asymptotics}); the ridge is therefore \emph{free} asymptotically. At finite $n$ it is not free, and that is its purpose: it bounds the loadings away from the runaway directions that destabilize the fit in the small-$n$, large-$q$, or overcomplete regimes, where the unregularized $Z_q$ surface is shallow. The penalty thus trades a finite-sample $O(\lambda/n)$ bias for a substantial variance reduction exactly where it is needed, and recedes where it is not. Figure~\ref{fig:ridge-bias} makes this concrete on the loading-recovery sweep of Section~\ref{sec:exp-turf}: pooling every loading element and regressing the residual on the true value, the ridge induces a mild shrinkage toward zero whose slope is $-0.15$ at $n{=}20$, $-0.04$ at $n{=}100$, and $-0.002$ at $n{=}500$---vanishing as $\lambda/n$ predicts---while the unpenalized \texttt{gllvm} is essentially unbiased throughout.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/sim1_bias.pdf}
+\caption{Ridge-induced loading bias on the dense-Poisson sweep ($q{=}2$, $\sigma_W{=}0.5$): residual (estimate $-$ true) against the true loading value, pooled over replicates and response dimension $p$, with the equal-count binned mean overlaid. The $Z_q$ ridge ($\lambda{=}0.5$, penalty $0.5\,\|W\|_F^2/n$) shrinks loadings toward zero by an amount that decays with $n$ (slopes annotated), confirming the $O(\lambda/n)$ bias; \texttt{gllvm} (no ridge) is unbiased. The $y$-axis is clipped to expose the trend---the tail blow-ups of \texttt{gllvm} at small $n$ are shown in Figure~\ref{fig:sim1box}.}
+\label{fig:ridge-bias}
+\end{figure}
+
+The constant $\lambda$ can be fixed once or chosen automatically, and the centered construction makes automatic selection essentially free. The fitted decoder is a fully specified generative model: at any current estimate $\widehat\bt$ we can simulate complete datasets $Y^\star \sim p_{\widehat\bt}$, for which the true loadings are \emph{known} (they are $\widehat W$ up to the gauge). Selecting $\lambda$ then requires no held-out data and no information criterion---it is a parametric bootstrap over the penalty:
+\begin{enumerate}
+\item simulate $B$ replicate datasets $Y^{\star (1)},\dots,Y^{\star (B)}$ of the observed size from $p_{\widehat\bt}$;
+\item over a grid of candidate $\lambda$, refit each replicate and record the relative orthogonal Procrustes error to the known $\widehat W$;
+\item set $\lambda^\star$ to the minimizer of the averaged error.
+\end{enumerate}
+This reuses exactly the model-expectation machinery already required by the centering term---the same ancestral draws and the same fit routine---so it adds only the cost of a small grid of refits, and it can be run on the fly once the estimate has settled. In the loading-recovery studies we instead fix a single value, $\lambda = 0.5$ (i.e.\ a penalty $0.5\,\|W\|_F^2/n$), stated once and used unchanged (the robustness experiment of Section~\ref{sec:exp-robust} uses no ridge); the automatic procedure above is the principled alternative when a default is undesirable, and the appendix sensitivity analysis confirms that the recovery is flat over a wide band of $\lambda$ and that $\lambda\to 0$ returns the unregularized fit.
 
 
 \end{document}

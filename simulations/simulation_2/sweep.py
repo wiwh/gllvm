@@ -63,6 +63,7 @@ EPS_GRID = [0.02, 0.05, 0.10, 0.20, 0.30, 0.40, 0.50]   # → breakdown of robus
 M_GRID = [10, 100, 1000, 10_000, 100_000]               # → flatness of robust arm
 
 HUBER_K = 3.0          # robust cut: c = median(log1p y) + HUBER_K · MAD(log1p y)
+PEARSON_C = 2.0        # Huber tuning constant for the Pearson-residual weight (zqe_pearson)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(HERE, "results")
@@ -126,6 +127,43 @@ class MapEncoderHuber(MapEncoderGaussianLog1p):
         A = (self.sigma2 * torch.eye(W.shape[1], device=W.device, dtype=W.dtype)
              + W.T @ W)
         return torch.linalg.solve(A, rhs.T).T
+
+
+class QuantileMapEncoder(MapEncoderGaussianLog1p):
+    """Gaussian-MAP (log1p) then per-dim rank→N(0,1) projection — a *calibrated*
+    latent (de-shrinks the MAP).  Used ONLY to form a robust μ for the Pearson
+    residual: its scale must be right for ``|r| > c`` to mean what it should."""
+
+    def forward(self, y):
+        z = super().forward(y)
+        n = z.shape[0]
+        ranks = z.argsort(0).argsort(0).double()
+        return torch.special.ndtri((ranks + 0.5) / n).to(z.dtype)
+
+
+# ----------------------------------------------------------------------------
+# Pearson-residual Huber weight (classic robust-GLM influence bound)
+# ----------------------------------------------------------------------------
+def pearson_huber_weight(c: float = PEARSON_C, sigma2: float = 1.0):
+    r"""Classic robust-GLM weight ``w(r) = min(1, c/|r|)`` on the **Poisson Pearson
+    residual** ``r = (y-μ)/√μ``, with ``μ`` from the quantile-projected Gaussian-log1p
+    MAP.  Cell-wise (per ``i, j``).
+
+    Why this μ (not the Poisson MAP): the ``log1p`` encoder *compresses* gross count
+    outliers, so μ tracks the structure rather than the spike → ``r`` is large for an
+    outlier → it is down-weighted.  A Poisson-Newton MAP would instead *chase* the
+    outlier (``μ ≈ y`` → ``r ≈ 0`` → not flagged) and is unstable on contaminated data.
+
+    Returns a ``weight_fn(gllvm, y) -> (n, p)`` for ``ZQEAutoFitter(weight_fn=…)``;
+    the fitter calls it under no-grad and applies the *same* map to data and fantasies
+    (so the centering supplies the Fisher-consistency correction automatically).
+    """
+    def weight_fn(gllvm, y):
+        z = QuantileMapEncoder(gllvm, sigma2).forward(y)        # calibrated latent
+        mu = gllvm.mean(z=z).clamp_min(1e-6)                    # Poisson conditional mean (n,p)
+        r = (y.to(mu.dtype) - mu) / mu.sqrt()                   # Pearson residual (V=μ)
+        return torch.clamp(c / r.abs().clamp_min(1e-12), max=1.0)
+    return weight_fn
 
 
 # ----------------------------------------------------------------------------
@@ -209,6 +247,44 @@ def fit_zqe_huber(Yc, seed, device, W_true):
                     lambda g, c=c: MapEncoderHuber(g, c))
 
 
+def fit_zqe_pearson(Yc, seed, device, W_true, c: float = PEARSON_C):
+    """EXPERIMENTAL — deferred to future work; **not in the paper sweep** (call with
+    ``methods=("zqe_pearson",)`` to run it).  As of now it is *dominated* by
+    ``zqe_huber``: it loses efficiency on clean data and climbs under contamination
+    (the unweighted warm-up is still outlier-pulled → the weights, computed at a
+    biased θ̂, mis-target; the de-shrunk quantile μ inflates the residual variance).
+    The principled fix (a robust consistent start, à la Cantoni–Ronchetti) is left
+    for the dedicated robustness paper.  Kept here as the starting point.
+
+    Robust ZQE: **quantile (rank-projected) encoder** + per-observation
+    **Pearson-Huber weight**.  Two reinforcing bounded-influence mechanisms:
+
+    * **Robust ẑ (encoder).** The quantile encoder is rank-based per margin, so its
+      output is *bounded* to the N(0,1) quantile range — a gross outlier can only
+      become "the top rank" (ẑ ≈ Φ⁻¹(1−½/n)), never blow up → η is bounded → the
+      statistic ``log1p(y)·η`` has bounded influence even before weighting.  (A plain
+      ``log1p`` MAP leaks the outlier into ẑ; the rank projection caps it.)
+    * **Pearson-Huber weight.** ``w(r)=min(1,c/|r|)``, ``r=(y-μ)/√μ``, μ from the same
+      quantile latent; removes the outlier *cells* from the sum.  The two reinforce:
+      a contaminated obs gets a too-high ẑ → its μ is off → its residuals are large →
+      its cells are down-weighted.
+
+    Warm-up runs **unweighted** (``weight_warmup=False``) for a consistent start; the
+    weights act only in the gentle refine phase.  The model-fantasy term carries the
+    same weight (each side weighted individually, on its own draws) → Fisher-consistency.
+    """
+    torch.manual_seed(seed)
+    g = fresh_decoder(device, torch.log1p)
+    t0 = time.time()
+    ft = ZQEAutoFitter(g, encoder_factory=lambda g: QuantileMapEncoder(g),
+                       weight_fn=pearson_huber_weight(c), device=device, seed=seed,
+                       **ZQE_KW).fit(Yc.to(device))
+    dt = time.time() - t0
+    W = _align(W_true, ft.model.wz)
+    b = ft.model.bias.detach().to("cpu", torch.float64).numpy()
+    return W, b, dt, bool(ft.converged_)
+
+
 def fit_gllvm(Yc, seed, rgllvm, W_true):
     t0 = time.time()
     rf = rgllvm.fit(Yc.cpu().numpy(), num_lv=Q, seed=seed)
@@ -240,20 +316,36 @@ def _rows(eps, M, rep, seed, method, W, b, time_sec, converged, procr, failed=0.
 
 
 def run_condition(eps: float, M: int, rep: int, device: str, rgllvm: RGllvm,
-                  methods=("zqe", "zqe_huber", "gllvm")) -> pd.DataFrame:
-    """Fit one (condition, rep): simulate clean, contaminate, fit each branch."""
+                  methods=("zqe", "zqe_huber", "gllvm"),
+                  overwrite: bool = False):
+    """Fit one (condition, rep), **merging** with any existing result file.
+
+    Only branches missing from the file are fitted (unless ``overwrite``), so a new
+    branch (e.g. ``zqe_pearson``) is appended to finished reps without recomputing
+    the others.  Returns the merged DataFrame, or ``None`` if nothing is needed.
+    """
+    path = result_path(eps, M, rep)
+    existing = pd.read_csv(path) if os.path.exists(path) else None
+    present = set(existing.method.unique()) if existing is not None else set()
+    to_run = [m for m in methods if overwrite or m not in present]
+    if not to_run and "true" in present:
+        return None
+
     Y, W_true, b_true = simulate_clean(rep)
     Yc = contaminate(Y, eps, M, rep)
 
-    rows = _rows(eps, M, rep, rep, "true", W_true, b_true,
-                 np.nan, np.nan, np.nan, failed=np.nan)
+    rows = []
+    if "true" not in present:
+        rows += _rows(eps, M, rep, rep, "true", W_true, b_true,
+                      np.nan, np.nan, np.nan, failed=np.nan)
 
     fitters = {
         "zqe": lambda: fit_zqe(Yc, rep, device, W_true),
         "zqe_huber": lambda: fit_zqe_huber(Yc, rep, device, W_true),
+        "zqe_pearson": lambda: fit_zqe_pearson(Yc, rep, device, W_true),
         "gllvm": lambda: fit_gllvm(Yc, rep, rgllvm, W_true),
     }
-    for m in methods:
+    for m in to_run:
         try:
             W, b, dt, conv = fitters[m]()
             rows += _rows(eps, M, rep, rep, m, W, b, dt, conv,
@@ -263,7 +355,12 @@ def run_condition(eps: float, M: int, rep: int, device: str, rgllvm: RGllvm,
                   f"{type(e).__name__}: {e}")
             rows += _rows(eps, M, rep, rep, m, None, None,
                           np.nan, np.nan, np.nan, failed=1.0)
-    return pd.DataFrame(rows)
+
+    new = pd.DataFrame(rows)
+    if existing is not None:
+        keep = existing[~existing.method.isin(to_run)]
+        return pd.concat([keep, new], ignore_index=True)
+    return new
 
 
 def _save_atomic(df: pd.DataFrame, path: str) -> None:
@@ -275,11 +372,26 @@ def _save_atomic(df: pd.DataFrame, path: str) -> None:
 # ----------------------------------------------------------------------------
 # Sweep driver
 # ----------------------------------------------------------------------------
+def _present_methods(eps: float, M: int, rep: int) -> set:
+    """Methods already stored in a rep's CSV (empty set if absent)."""
+    path = result_path(eps, M, rep)
+    if not os.path.exists(path):
+        return set()
+    return set(pd.read_csv(path, usecols=["method"]).method.unique())
+
+
 def run_sweep(reps: int, *, device: Optional[str] = None,
-              conditions=CONDITIONS, methods=("zqe", "zqe_huber", "gllvm"),
+              conditions=CONDITIONS,
+              methods=("zqe", "zqe_huber", "gllvm"),
               overwrite: bool = False, rgllvm: Optional[RGllvm] = None,
               verbose: bool = True) -> None:
-    """Run every (condition, rep) for ``rep`` in ``range(reps)``, skipping done."""
+    """Run every (condition, rep) for ``rep`` in ``range(reps)``.
+
+    Method-aware & resumable: a (condition, rep) runs only if some requested branch
+    (or ``true``) is missing from its CSV; a new branch (``zqe_pearson``) is appended
+    to finished reps without recomputing the others.  Run one new branch cheaply with
+    ``methods=("zqe_pearson",)`` (no R needed unless ``gllvm`` is requested).
+    """
     os.makedirs(RESULTS_DIR, exist_ok=True)
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -291,16 +403,21 @@ def run_sweep(reps: int, *, device: Optional[str] = None,
                 "rscript=.../workdir=..., or drop 'gllvm' from methods."
             )
 
+    need = set(methods) | {"true"}
     todo = [(e, m, rep) for (e, m) in conditions for rep in range(reps)
-            if overwrite or not is_done(e, m, rep)]
+            if overwrite or not need.issubset(_present_methods(e, m, rep))]
     if verbose:
         total = len(conditions) * reps
         print(f"device={device}  {len(conditions)} conditions × {reps} reps "
-              f"= {total} fits;  {total - len(todo)} done, {len(todo)} to run.")
+              f"= {total};  {total - len(todo)} complete, {len(todo)} to (re)run "
+              f"[methods={','.join(methods)}].")
 
     for k, (eps, M, rep) in enumerate(todo, 1):
         t0 = time.time()
-        df = run_condition(eps, M, rep, device, rgllvm, methods=methods)
+        df = run_condition(eps, M, rep, device, rgllvm, methods=methods,
+                           overwrite=overwrite)
+        if df is None:
+            continue
         _save_atomic(df, result_path(eps, M, rep))
         if verbose:
             sub = df[df.method != "true"].drop_duplicates("method")

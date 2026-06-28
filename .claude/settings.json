@@ -6,7 +6,19 @@
       "Bash(python /tmp/build_gp_nb.py)",
       "Bash(timeout 540 jupyter nbconvert --to notebook --execute --inplace gp_gllvm_multioutput.ipynb --ExecutePreprocessor.timeout=500)",
       "Bash(cat)",
-      "Bash(python /tmp/moments_compat_10.py)"
+      "Bash(python /tmp/moments_compat_10.py)",
+      "Bash(timeout 120 pdflatex -interaction=nonstopmode -draftmode main.tex)",
+      "Bash(echo \"exit: $?\")",
+      "Read(//tmp/**)",
+      "Bash(python -u -c ' *)",
+      "Bash(tee simulations/simulation_1/sweep_run.log)",
+      "Bash(tee simulations/simulation_3/sweep_run.log)",
+      "WebSearch",
+      "WebFetch(domain:journals.plos.org)",
+      "WebFetch(domain:arxiv.org)",
+      "WebFetch(domain:jenniniku.github.io)",
+      "WebFetch(domain:github.com)",
+      "Bash(python sandwich.py)"
     ]
   }
 }

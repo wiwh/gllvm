@@ -202,13 +202,17 @@ class MapEncoderGaussianLog1p(nn.Module):
         self.gllvm = gllvm   # live reference — always uses current W, b
         self.sigma2 = sigma2
 
-    def forward(self, y):
-        W = self.gllvm.wz           # (p, q)
-        b = (self.gllvm.bias
-             if self.gllvm.bias is not None
-             else torch.zeros(W.shape[0], device=W.device, dtype=W.dtype))
+    def forward(self, y, cols=None):
+        # ``cols`` (a long tensor of response indices) restricts the encoder to a
+        # subset of responses: ``y`` is then the corresponding (n, |cols|) block and
+        # the MAP uses only ``wz[cols]``, costing O(n·|cols|·q).  ``None`` → all p.
+        W = self.gllvm.wz if cols is None else self.gllvm.wz[cols]   # (p or |cols|, q)
+        if self.gllvm.bias is not None:
+            b = self.gllvm.bias if cols is None else self.gllvm.bias[cols]
+        else:
+            b = torch.zeros(W.shape[0], device=W.device, dtype=W.dtype)
 
-        t_y = torch.log1p(y.float())            # (n, p)
+        t_y = torch.log1p(y.float())            # (n, p) or (n, |cols|)
         rhs = (t_y - b.unsqueeze(0)) @ W        # (n, q)  =  (log1p(y)-b)^T W
 
         A = (self.sigma2 * torch.eye(W.shape[1], device=W.device, dtype=W.dtype)
@@ -218,9 +222,9 @@ class MapEncoderGaussianLog1p(nn.Module):
         z_map = torch.linalg.solve(A, rhs.T).T  # (n, q)
         return z_map
 
-    def sample(self, y):
+    def sample(self, y, cols=None):
         """Drop-in for Encoder.sample() — deterministic delta-mass surrogate."""
-        z = self.forward(y)
+        z = self.forward(y, cols=cols)
         return z, z, torch.full_like(z, float("-inf"))
 
     def loss(self, y, gllvm=None, **kwargs):

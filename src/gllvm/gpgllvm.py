@@ -266,9 +266,11 @@ class GPZQEFitter:
         n = self.y.shape[0]
         if groups is None:
             self._groups = [torch.arange(n, device=dev)]
-        else:
+        else:                                            # sort-based group-by: O(n log n), any #groups
             g = torch.as_tensor(groups, device=dev)
-            self._groups = [torch.nonzero(g == u, as_tuple=False).squeeze(1) for u in torch.unique(g)]
+            order = torch.argsort(g, stable=True)
+            _, counts = torch.unique_consecutive(g[order], return_counts=True)
+            self._groups = list(torch.split(order, counts.tolist()))
         gmin = min(len(g) for g in self._groups)
         if self.K > gmin:
             self.K = gmin            # can't draw more points than the smallest group has

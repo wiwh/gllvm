@@ -22,6 +22,7 @@ Example
 ...     fit = r.fit(Y, num_lv=2)     # Y: (n, p) counts
 ...     fit.loadings.shape           # (p, q)
 """
+
 from __future__ import annotations
 
 import os
@@ -89,7 +90,8 @@ class RGllvm:
     family : str
         Response family (e.g. ``"poisson"``, ``"negative.binomial"``).
     maxit : int
-        Optimiser iteration cap.
+        Optimiser iteration cap.  gllvm's documented default is 6000; we use
+        6000 to match it.
     starting_val : str
         ``control.start$starting.val`` (``"res"`` is robust and matches the
         original benchmark).
@@ -103,9 +105,9 @@ class RGllvm:
         workdir: str = DEFAULT_WORKDIR,
         method: str = "VA",
         family: str = "poisson",
-        maxit: int = 2000,
+        maxit: int = 6000,
         starting_val: str = "res",
-        timeout: float = 600.0,
+        timeout: float = 20000.0,
         ntrials: int = 1,
         link: Optional[str] = None,
     ):
@@ -116,8 +118,8 @@ class RGllvm:
         self.maxit = maxit
         self.starting_val = starting_val
         self.timeout = timeout
-        self.ntrials = ntrials       # number of binomial trials (binomial family only)
-        self.link = link             # e.g. "logit"/"probit" for binomial; None = gllvm default
+        self.ntrials = ntrials  # number of binomial trials (binomial family only)
+        self.link = link  # e.g. "logit"/"probit" for binomial; None = gllvm default
         os.makedirs(self.workdir, exist_ok=True)
 
     def available(self) -> bool:
@@ -141,8 +143,9 @@ class RGllvm:
             return f'\n                         link="{self.link}",'
         return ""
 
-    def _render_script(self, y_win: str, w_win: str, b_win: str,
-                       num_lv: int, seed: int) -> str:
+    def _render_script(
+        self, y_win: str, w_win: str, b_win: str, num_lv: int, seed: int
+    ) -> str:
         return textwrap.dedent(
             f"""
             set.seed({seed})
@@ -190,12 +193,21 @@ class RGllvm:
             np.savetxt(y_path, Y, delimiter=",", fmt="%.10g")
 
         with open(r_path, "w") as f:
-            f.write(self._render_script(_wsl_to_win(y_path), _wsl_to_win(w_path),
-                                        _wsl_to_win(b_path), num_lv, seed))
+            f.write(
+                self._render_script(
+                    _wsl_to_win(y_path),
+                    _wsl_to_win(w_path),
+                    _wsl_to_win(b_path),
+                    num_lv,
+                    seed,
+                )
+            )
 
         proc = subprocess.run(
             [self.rscript, "--vanilla", _wsl_to_win(r_path)],
-            capture_output=True, text=True, timeout=self.timeout,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout,
         )
         if proc.returncode != 0 or not os.path.exists(w_path):
             raise RuntimeError(
@@ -204,12 +216,18 @@ class RGllvm:
             )
 
         W = np.loadtxt(w_path, delimiter=",", skiprows=1)  # skip write.csv header
-        if W.ndim == 1:                                     # single latent → column
+        if W.ndim == 1:  # single latent → column
             W = W.reshape(-1, num_lv)
         b = None
         if os.path.exists(b_path):
             b = np.loadtxt(b_path, delimiter=",", skiprows=1)  # beta0 column
             b = np.atleast_1d(b)
-        return RGllvmFit(loadings=W, intercepts=b, num_lv=num_lv,
-                         method=self.method, family=self.family,
-                         stdout=proc.stdout, stderr=proc.stderr)
+        return RGllvmFit(
+            loadings=W,
+            intercepts=b,
+            num_lv=num_lv,
+            method=self.method,
+            family=self.family,
+            stdout=proc.stdout,
+            stderr=proc.stderr,
+        )

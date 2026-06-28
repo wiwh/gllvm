@@ -38,3 +38,16 @@ Make it so that i can increase to H = 100 if needed, without requiring to redo t
 once done, we want a notebook for the analysis of the result
 
 somehow i want plot of procrustes error across the sweep, but also bias and variance. maybe some boxplots or stuff would be nice. 
+
+## IDEA — FOR LATER (do not run yet)
+Re-run sim_1 with two changes, for a *fair* timing comparison vs R gllvm:
+- **`max_rounds=2`** (just 2 refine steps), same as sim_7 — `plot_params` shows the loadings
+  lock onto the truth during warm-up + the first refine round, so the extra restarts are wasted
+  compute. Should not change recovery, just speed.
+- **Run everything on CPU.** R gllvm is CPU-only, so ZQE-on-GPU is an unfair hardware edge.
+  Putting both on CPU makes the wall-clock comparison apples-to-apples.
+  - Guess: at these tiny per-fit sizes CPU may be *faster* than GPU anyway (no CPU→GPU
+    transfer overhead for small ops). Machine has a 9950X3D (16C/32T) — plenty of threads;
+    consider `torch.set_num_threads(...)`.
+- Goal: report ZQE vs gllvm timing with no GPU asterisk, alongside the existing accuracy/tail
+  results.

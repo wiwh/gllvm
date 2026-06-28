@@ -132,10 +132,23 @@ class GLLVM(nn.Module):
         Number k of covariates.
     bias : bool
         Whether to include a learned bias vector of size p.
+    lower_tri : bool
+        If True, constrain the loadings ``wz`` to be lower-triangular (the upper-right
+        block ``wz[i, j] = 0`` for ``j > i``) via the structural-zero mask.  This is the
+        standard factor-analysis / ``gllvm`` identification constraint: it fixes the
+        rotation gauge so the loadings are identified up to sign.  It is a property of the
+        *model* (which GLLVM you estimate), not of the fitter.
+
+        Default ``False`` (fully free loadings).  Note: the lower-tri constraint *excludes*
+        any truth whose loadings are not lower-triangular, so it is a (mild)
+        misspecification unless the rotation gauge is genuinely free --- appropriate for a
+        standard / shared-kernel GLLVM, but not for a distinct-timescale GP-GLLVM, where
+        the timescales already break the rotation and the full ``wz`` should be kept.
     """
 
     def __init__(
-        self, latent_dim: int, output_dim: int, feature_dim: int = 0, bias: bool = True
+        self, latent_dim: int, output_dim: int, feature_dim: int = 0, bias: bool = True,
+        lower_tri: bool = False,
     ):
         super().__init__()
 
@@ -163,7 +176,12 @@ class GLLVM(nn.Module):
 
         # Optional structural-zero mask on loadings (p, q).  1 = free, 0 = forced zero.
         # Registered as a buffer so it travels with .to(device) / state_dict.
-        self.register_buffer("wz_mask", torch.ones(self.p, self.q))
+        # lower_tri=True zeros the upper-right block (j > i): the standard FA/gllvm
+        # rotation-fixing constraint.  torch.tril keeps entries with col <= row, so the
+        # first q rows form a triangle and rows q..p-1 stay fully free (as desired).
+        self.lower_tri = lower_tri
+        mask = torch.tril(torch.ones(self.p, self.q)) if lower_tri else torch.ones(self.p, self.q)
+        self.register_buffer("wz_mask", mask)
 
     # --------------------------------------------------------
     # Building the model
@@ -257,6 +275,25 @@ class GLLVM(nn.Module):
 
         return linpar
 
+    def _linpar_cols(self, z: torch.Tensor, cols: torch.Tensor, x: torch.Tensor | None = None):
+        """Linear predictor for a *subset* of response columns, without the full forward.
+
+        Costs ``O(n · |cols| · q)`` rather than ``O(n · p · q)``, so estimation can be
+        made independent of the total number of responses ``p`` by sub-sampling
+        ``cols`` (used by ``ZQEAutoFitter(feature_batch=...)``).  Mirrors
+        :meth:`forward` (structural-zero mask, covariates, bias) but touches only the
+        selected loadings ``wz[cols]``.
+        """
+        wz_c = self.wz[cols] * self.wz_mask[cols]    # (|cols|, q)
+        linpar = z @ wz_c.T
+        if self.k > 0:
+            if x is None:
+                raise ValueError("Covariates x must be provided when feature_dim > 0.")
+            linpar = linpar + x @ self.wx[cols].T
+        if self.bias is not None:
+            linpar = linpar + self.bias[cols]
+        return linpar
+
     # --------------------------------------------------------
     # Sampling
     # --------------------------------------------------------
@@ -335,14 +372,8 @@ class GLLVM(nn.Module):
         n = z.shape[0]
         device = z.device
 
-        # Compute full linpar but extract block
-        linpar_full = self.forward(z, x)  # [n, p]
-        linpar = linpar_full[:, cols]  # [n, B]
-
-        # Pre-select bias and scale block
-        bias_block = None
-        if self.bias is not None:
-            bias_block = self.bias[cols]  # [B]
+        # Linear predictor for the selected columns only (O(n·|cols|·q), no full forward)
+        linpar = self._linpar_cols(z, cols, x)  # [n, B]
 
         scale_block = self.scale[cols]  # [B]
 
@@ -521,8 +552,7 @@ class GLLVM(nn.Module):
     def zq_log_block(self, y_block, z, cols, x=None):
         self._check_assignments()
 
-        linpar_full = self.forward(z, x)
-        linpar = linpar_full[:, cols]
+        linpar = self._linpar_cols(z, cols, x)   # subset only (O(n·|cols|·q))
 
         scale_block = self.scale[cols]
         logp = torch.zeros_like(y_block)

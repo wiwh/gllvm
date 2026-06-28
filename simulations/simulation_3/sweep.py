@@ -3,18 +3,19 @@ sweep.py — driver for *simulation_3* (Binomial GLLVM size sweep).
 
 The **symmetric twin of simulation 1**: the identical size sweep
 (``q=2``; ``p ∈ {10,20,50,100}``; ``n ∈ {20,100,500}``; ``H`` reps), but every
-response is **Binomial** (logit link) instead of Poisson — a bounded-count twin
-of the Poisson (unbounded-count) sweep, on *clean* data. (Robustness to
-contamination lives only in simulation 2.)
+response is **Binomial** (``N=10`` trials, logit link) instead of Poisson — a
+bounded-count twin of the Poisson (unbounded-count) sweep, on *clean* data.
+(Robustness to contamination lives only in simulation 2.)
 
 **Why Binomial with N>1 and not Bernoulli.** With a single trial (Bernoulli),
 the GLLVM likelihood is *unbounded* at small n: the loadings can drive logits to
 ±∞ and perfectly separate the 0/1 outcomes, so the parameter is **not
-identifiable** (the unregularised ZQE estimate runs away; gllvm survives only via
-its variational prior). With ``N = BINOM_TRIALS`` trials and intermediate true
-probabilities, the counts cannot be perfectly separated, the likelihood is
-bounded, and the setting is identifiable across the whole grid (verified). This is
-an identifiability fix in the *design*, not a regulariser on the estimator.
+identifiable** — even at ``wz_scale=0.5`` (where the *population* probabilities
+are mid-range, ≈83–97% in [.15,.85]) the *empirical* n=20 outcomes still separate
+and the ZQE/gllvm estimates run away (Procrustes ≈ 2–3, verified). With
+``N = BINOM_TRIALS`` trials the counts cannot be perfectly separated, the
+likelihood is bounded, and the setting is identifiable across the whole grid. This
+is an identifiability fix in the *design*, not a regulariser on the estimator.
 
 Two things change vs simulation 1:
 
@@ -24,11 +25,14 @@ Two things change vs simulation 1:
 * **Encoder.** The Gaussian-proxy MAP encoder solves the same ridge system on
   ``T(y)`` (:class:`MapEncoderGaussianT`). Encoder affects efficiency, not consistency.
 
-Loadings use ``wz_scale=0.7`` so success probabilities stay nicely mixed in
-~(.1,.9). Everything else matches simulation 1: ``seed == rep`` drives the true
+Loadings use ``wz_scale=0.5`` (matching simulation 1) so success probabilities
+stay mixed around 0.5, and ZQE carries the same ridge ``l2 = 0.5/n``.
+Everything else matches simulation 1: ``seed == rep`` drives the true
 model and data; one CSV per (setting, rep); resumable; failures flagged; loadings
-scored vs the true ``W`` after Procrustes rotation. ``gllvm`` is fit with the
-matching ``Ntrials=N``. Columns: see ``results/DATA_DICTIONARY.md``.
+scored vs the true ``W`` after Procrustes rotation. ``gllvm`` is fit with
+``family="binomial"`` and ``link="logit"`` (its binomial default is *probit*;
+without this the recovered loadings are off by the logit/probit scale ~1.8).
+Columns: see ``results/DATA_DICTIONARY.md``.
 """
 
 from __future__ import annotations
@@ -53,11 +57,13 @@ from gllvm.r_gllvm import RGllvm
 Q = 2
 P_GRID = [10, 20, 50, 100]
 N_GRID = [20, 100, 500]
-WZ_SCALE = 0.7             # keeps success probabilities mixed in ~(.1,.9)
+WZ_SCALE = 0.5             # loading scale (matches simulation 1)
+L2_COEF = 0.5              # ridge coefficient; per-fit penalty is L2_COEF / n
 BINOM_TRIALS = 10          # Binomial trials per cell. N=1 (Bernoulli) is NOT
 #                            identifiable at small n (perfect separation → loadings
-#                            run away); N>1 bounds the likelihood. N=10 is cleanly
-#                            identifiable across the whole grid (verified).
+#                            run away even at wz_scale=0.5: empirical 0/1 outcomes
+#                            separate when n is small); N>1 bounds the likelihood.
+#                            N=10 is cleanly identifiable across the whole grid.
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RESULTS_DIR = os.path.join(HERE, "results")
@@ -154,7 +160,8 @@ def fit_zqe(Y, q, p, seed, device, W_true):
     g = fresh_decoder(q, p, device)
     t0 = time.time()
     ft = ZQEAutoFitter(g, encoder_factory=lambda g: MapEncoderGaussianT(g, T_binom),
-                       device=device, seed=seed, **ZQE_KW).fit(Y.to(device))
+                       device=device, seed=seed, l2=L2_COEF / Y.shape[0],
+                       **ZQE_KW).fit(Y.to(device))
     dt = time.time() - t0
     W = _align(W_true, ft.model.wz)
     b = ft.model.bias.detach().to("cpu", torch.float64).numpy()

@@ -48,13 +48,15 @@ def _apply_latent_sparsity(g, zero_latent_cols: int):
             "Silencing all latent dims leaves no signal."
         )
     mask = torch.ones(g.p, g.q)
-    mask[:, -zero_latent_cols:] = 0.0          # last cols → structural zeros
+    mask[:, -zero_latent_cols:] = 0.0  # last cols → structural zeros
     g.set_wz_mask(mask)
     with torch.no_grad():
         g.wz.data[:, -zero_latent_cols:] = 0.0  # also zero the weights themselves
 
 
-def _apply_loading_sparsity(g, responses_per_latent: int, active_cols: int | None = None):
+def _apply_loading_sparsity(
+    g, responses_per_latent: int, active_cols: int | None = None
+):
     """
     For each active latent column, zero out all but `responses_per_latent`
     randomly chosen response rows.  Columns beyond `active_cols` are left as-is
@@ -83,7 +85,7 @@ def _apply_loading_sparsity(g, responses_per_latent: int, active_cols: int | Non
 
     # Build a (p, q) mask; start from the existing mask (may have zeroed cols)
     try:
-        mask = g.wz_mask.clone()          # (p, q) if mask already set
+        mask = g.wz_mask.clone()  # (p, q) if mask already set
     except AttributeError:
         mask = torch.ones(g.p, g.q)
 
@@ -91,9 +93,9 @@ def _apply_loading_sparsity(g, responses_per_latent: int, active_cols: int | Non
     rng.manual_seed(0)
     for k in range(active_cols):
         perm = torch.randperm(g.p, generator=rng)
-        on   = perm[:responses_per_latent]
-        off  = perm[responses_per_latent:]
-        mask[on,  k] = 1.0
+        on = perm[:responses_per_latent]
+        off = perm[responses_per_latent:]
+        mask[on, k] = 1.0
         mask[off, k] = 0.0
 
     g.set_wz_mask(mask)
@@ -124,7 +126,10 @@ def make_poisson_only(n_latent, n_response):
 def make_binomial_only(n_latent, n_response, n_trials=10):
     g = GLLVM(latent_dim=n_latent, output_dim=n_response)
     g.add_glm(
-        BinomialGLM, idx=list(range(n_response)), name="Binomial", params={"total_count": n_trials}
+        BinomialGLM,
+        idx=list(range(n_response)),
+        name="Binomial",
+        params={"total_count": n_trials},
     )
 
     _random_init(g)
@@ -140,6 +145,7 @@ def make_mixed(
     zero_latent_cols: int = 0,
     wz_scale: float = 1.0,
     responses_per_latent: int | None = None,
+    lower_tri=False,
 ):
     """
     Build a mixed-outcome GLLVM.
@@ -171,7 +177,7 @@ def make_mixed(
                    responses_per_latent=20, wz_scale=0.3)
     """
     p = gaussian + poisson + binomial
-    g = GLLVM(latent_dim=n_latent, output_dim=p)
+    g = GLLVM(latent_dim=n_latent, output_dim=p, lower_tri=lower_tri)
 
     idx = 0
 
@@ -217,6 +223,7 @@ def make_sparse(
     active_latent: int | None = None,
     wz_scale: float = 0.3,
     responses_per_latent: int | None = None,
+    lower_tri=False,
 ):
     """
     Convenience wrapper for the sparse-loadings simulation setting.
@@ -251,6 +258,7 @@ def make_sparse(
     """
     if active_latent is None:
         import math
+
         active_latent = math.ceil(n_latent / 2)
 
     zero_latent_cols = n_latent - active_latent
@@ -263,6 +271,7 @@ def make_sparse(
         zero_latent_cols=zero_latent_cols,
         wz_scale=wz_scale,
         responses_per_latent=responses_per_latent,
+        lower_tri=lower_tri,
     )
 
 

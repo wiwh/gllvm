@@ -35,20 +35,25 @@ def initial_gaussian_fit(X: torch.Tensor, Y: torch.Tensor, offset: Optional[torc
             raise ValueError(f"offset shape {offset.shape} != Y shape {Y.shape}")
         T = T - offset
     # On CUDA only "gels" (QR) is available; on CPU use "gelsd" (SVD, rank-safe).
-    # Fall back to ridge normal equations if lstsq raises (e.g. rank-deficient W).
     driver = "gels" if X.is_cuda else "gelsd"
     try:
-        return torch.linalg.lstsq(X, T, driver=driver).solution
+        B0 = torch.linalg.lstsq(X, T, driver=driver).solution
+        if torch.isfinite(B0).all():
+            return B0
     except Exception:
-        # Ridge fallback: (X^T X + eps I)^{-1} X^T T
-        XT  = X.T
-        XtX = XT @ X
-        q   = X.shape[1]
-        reg = XtX + eps * torch.eye(q, device=X.device, dtype=X.dtype)
-        try:
-            return torch.linalg.solve(reg, XT @ T)
-        except Exception:
-            return torch.zeros(X.shape[1], T.shape[1], device=X.device, dtype=X.dtype)
+        pass
+    # Ridge fallback (rank-safe): (X^T X + eps I)^{-1} X^T T.  Triggered when lstsq raises
+    # OR returns non-finite: on CUDA the "gels" (QR) driver silently yields NaN for a
+    # rank-deficient X — e.g. a fully-zeroed (dead) factor column — without raising, which
+    # would otherwise contaminate the whole batch.  The eps ridge sends those columns' z→0.
+    XT  = X.T
+    XtX = XT @ X
+    q   = X.shape[1]
+    reg = XtX + eps * torch.eye(q, device=X.device, dtype=X.dtype)
+    try:
+        return torch.linalg.solve(reg, XT @ T)
+    except Exception:
+        return torch.zeros(X.shape[1], T.shape[1], device=X.device, dtype=X.dtype)
 
 
 def poisson_newton_batch(
